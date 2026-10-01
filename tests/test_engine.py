@@ -67,4 +67,16 @@ class EngineTests(unittest.TestCase):
         self.assertAlmostEqual(runs/2000, 4.45, delta=.35)
         self.assertAlmostEqual(counts['Home run']/2000, 1.16, delta=.12)
 
+    def test_catcher_sequencing_affects_pitching(self):
+        totals=[]
+        for rating in (0,100):
+            strikeouts=0
+            for seed in range(100):
+                req={'away':team('Away'),'home':team('Home'),'seed':f'catcher-{seed}'}
+                req['home']['lineup'][0]['sequencing']=rating
+                result=simulate(req)
+                strikeouts+=sum(p['SO'] for p in result['batting'][0])
+            totals.append(strikeouts)
+        self.assertGreater(totals[1],totals[0])
+
 if __name__ == '__main__': unittest.main()

@@ -83,6 +83,9 @@ def simulate(request, *, max_innings=12):
                     pi += 1
                     pitcher = teams[defense]['pitchers'][pi]
                 ps = pitching[defense][pi]
+                catcher = next(p for p in teams[defense]['lineup'] if p['position'] == 'C')
+                # Imported cat belongs to the catcher. A neutral 50 adds no modifier.
+                sequencing = max(0, min(100, pitcher['sequencing'] + catcher['sequencing'] - 50))
                 bi = order[side] % 9
                 order[side] += 1
                 batter = teams[side]['lineup'][bi]
@@ -108,10 +111,10 @@ def simulate(request, *, max_innings=12):
                     pitch_types = ['fastball', 'slider', 'changeup']
                     weights = [5 + balls, 3 + strikes * 2, 2 + strikes]
                     if previous:
-                        weights[pitch_types.index(previous)] *= 1.2 - pitcher['sequencing'] * .008
+                        weights[pitch_types.index(previous)] *= 1.2 - sequencing * .008
                     kind = rng.choices(pitch_types, weights)[0]
                     repeat = previous == kind
-                    deception = (pitcher['sequencing'] - 50) * .0015 + (0.025 if not repeat else -.025)
+                    deception = (sequencing - 50) * .0015 + (0.025 if not repeat else -.025)
                     previous = kind
                     counts[defense][pi] += 1
                     ps['pitches'] += 1
@@ -169,7 +172,8 @@ def simulate(request, *, max_innings=12):
                     else:
                         fielder = rng.choice([p for p in teams[defense]['lineup'] if p['position'] != 'DH'])
                         error = chance(MODEL['error'] + (fielder['error'] - 50) * .0003)
-                        hit = not error and chance(MODEL['hit'] + (batter['contact'] - 50) * .0015 - (fielder['range'] - 50) * .002)
+                        defensive_skill = fielder['range']
+                        hit = not error and chance(MODEL['hit'] + (batter['contact'] - 50) * .0015 - (defensive_skill - 50) * .002)
                         if error or hit:
                             distance = 1 if error else rng.choices([1, 2, 3], [100-MODEL['double']-MODEL['triple'], MODEL['double'] * park, MODEL['triple']])[0]
                             outcome = 'Error' if error else {1: 'Single', 2: 'Double', 3: 'Triple'}[distance]
@@ -193,7 +197,7 @@ def simulate(request, *, max_innings=12):
                         else:
                             outcome = 'Field out'
                             outs += 1
-                            if bases[0] and start_outs < 2 and chance(MODEL['double_play'] + (fielder['arm'] + fielder['range'] - 100) * .001):
+                            if bases[0] and start_outs < 2 and chance(MODEL['double_play'] + (fielder['arm'] + defensive_skill - 100) * .001):
                                 outcome = 'Double play'
                                 outs += 1
                                 bases[0] = None

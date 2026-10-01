@@ -1,8 +1,8 @@
 {
   "name": "Lin Kai",
   "pastab": {
-    "22": {"stamina": 66, "contact": 58, "power": 52, "eye": 48, "velocity": 76, "movement": 62, "control": 51, "range": 73, "error": 15, "arm": 82, "sequencing": 48},
-    "28": {"stamina": 74, "contact": 78, "power": 75, "eye": 72, "velocity": 73, "movement": 80, "control": 76, "range": 67, "error": 9, "arm": 79, "sequencing": 85},
-    "36": {"stamina": 45, "contact": 67, "power": 61, "eye": 85, "velocity": 52, "movement": 76, "control": 84, "range": 42, "error": 12, "arm": 60, "sequencing": 93}
+    "22": {"sta": 66, "con": 58, "pow": 52, "eye": 48, "vel": 76, "brk": 62, "ctl": 51, "rng": 73, "fld": 15, "arm": 82, "cat": 48},
+    "28": {"sta": 74, "con": 78, "pow": 75, "eye": 72, "vel": 73, "brk": 80, "ctl": 76, "rng": 67, "fld": 9, "arm": 79, "cat": 85},
+    "36": {"sta": 45, "con": 67, "pow": 61, "eye": 85, "vel": 52, "brk": 76, "ctl": 84, "rng": 42, "fld": 12, "arm": 60, "cat": 93}
   }
 }
