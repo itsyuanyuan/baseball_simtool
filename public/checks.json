@@ -1,0 +1,167 @@
+{
+  "engine_sha256": "5185216b10a7e8152a57afb919449bb0749eabf9d15c7ff3217456bed9920594",
+  "model_version": "0.2-calibrated",
+  "coefficients": {
+    "zone": 0.507,
+    "swing_zone": 0.68,
+    "chase": 0.3,
+    "contact": 0.85,
+    "foul": 0.48,
+    "homer": 0.044,
+    "hit": 0.3,
+    "double": 23.5,
+    "triple": 1.8,
+    "hbp": 0.0028,
+    "error": 0.018,
+    "score_second": 0.67,
+    "first_to_third": 0.28,
+    "score_first_double": 0.55,
+    "productive_out": 0.36,
+    "double_play": 0.13
+  },
+  "seed_prefix": "holdout-v2-",
+  "games": 10000,
+  "matchups_per_pair": 5000,
+  "baseline": {
+    "PA": 784521,
+    "AVG": 0.24771697085840763,
+    "OBP": 0.3163293270670893,
+    "SLG": 0.406238464639036,
+    "K%": 22.099982027249748,
+    "BB%": 8.376193881362003,
+    "HR%": 3.045042771321609,
+    "P/PA": 3.356839396268551,
+    "R/G": 4.4162,
+    "HR/G": 1.19445
+  },
+  "mlb_2025": {
+    "AVG": 0.245,
+    "OBP": 0.315,
+    "SLG": 0.404,
+    "R/G": 4.45,
+    "HR/G": 1.1604938271604939,
+    "BB%": 8.412594293210889,
+    "K%": 22.220400131190555
+  },
+  "profiles": {
+    "Average": {
+      "contact": 50,
+      "power": 50,
+      "eye": 50
+    },
+    "Schwarber-like": {
+      "contact": 35,
+      "power": 95,
+      "eye": 90
+    },
+    "Ichiro-like": {
+      "contact": 95,
+      "power": 20,
+      "eye": 55
+    }
+  },
+  "pitching_ratings": {
+    "Average": 50,
+    "Elite": 90
+  },
+  "matchups": [
+    {
+      "hitter": "Average",
+      "pitcher": "Average",
+      "PA": 5000,
+      "AVG": 0.24451341166038573,
+      "OBP": 0.3184,
+      "SLG": 0.395256040789182,
+      "K%": 22.24,
+      "BB%": 8.86,
+      "HR%": 2.82,
+      "P/PA": 3.3628
+    },
+    {
+      "hitter": "Schwarber-like",
+      "pitcher": "Average",
+      "PA": 5000,
+      "AVG": 0.23105794041754632,
+      "OBP": 0.3444,
+      "SLG": 0.4672765657987333,
+      "K%": 24.58,
+      "BB%": 13.819999999999999,
+      "HR%": 5.42,
+      "P/PA": 3.6416
+    },
+    {
+      "hitter": "Ichiro-like",
+      "pitcher": "Average",
+      "PA": 5000,
+      "AVG": 0.2987414440273791,
+      "OBP": 0.3648,
+      "SLG": 0.41112828438948995,
+      "K%": 15.160000000000002,
+      "BB%": 8.540000000000001,
+      "HR%": 1.16,
+      "P/PA": 3.2286
+    },
+    {
+      "hitter": "Average",
+      "pitcher": "Elite",
+      "PA": 5000,
+      "AVG": 0.1899002758328029,
+      "OBP": 0.2364,
+      "SLG": 0.28495650328877575,
+      "K%": 35.6,
+      "BB%": 5.16,
+      "HR%": 1.5,
+      "P/PA": 3.391
+    },
+    {
+      "hitter": "Schwarber-like",
+      "pitcher": "Elite",
+      "PA": 5000,
+      "AVG": 0.1785163988553819,
+      "OBP": 0.2536,
+      "SLG": 0.33832269425489764,
+      "K%": 39.1,
+      "BB%": 8.52,
+      "HR%": 3.8,
+      "P/PA": 3.646
+    },
+    {
+      "hitter": "Ichiro-like",
+      "pitcher": "Elite",
+      "PA": 5000,
+      "AVG": 0.25609497562009753,
+      "OBP": 0.2982,
+      "SLG": 0.3332626669493322,
+      "K%": 27.02,
+      "BB%": 5.08,
+      "HR%": 0.33999999999999997,
+      "P/PA": 3.2708
+    }
+  ],
+  "baseline_counts": {
+    "R": 88324,
+    "PA": 784521,
+    "Field out": 339254,
+    "pitches": 2633511,
+    "Walk": 65713,
+    "Double": 35098,
+    "Single": 113505,
+    "Strikeout": 173379,
+    "Home run": 23889,
+    "Error": 9155,
+    "Double play": 10125,
+    "Sacrifice fly": 4441,
+    "Triple": 2660,
+    "Hit by pitch": 7302
+  },
+  "source": "https://www.baseball-reference.com/tools/share.fcgi?id=j7IEM",
+  "notes": [
+    "All baseline ratings, including error tendency, are 50.",
+    "MLB reference is the rounded 2025 league-average row; BB% and K% derived from it.",
+    "Model includes HBP and sacrifice flies; no sacrifice bunts or catcher interference.",
+    "Ratings are illustrative archetypes, not fitted player ratings.",
+    "Each matchup samples the first PA of an independent seeded game.",
+    "Same seed set is reused across profiles; comparisons are paired, not independent.",
+    "Baseline fitted on train-v2 seeds; this report uses separate holdout-v2 seeds."
+  ]
+}

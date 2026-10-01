@@ -1,0 +1,145 @@
+{
+  "engine_sha256": "9448a16a66ca9561847b2b9220522fd5a64dbd56a2eb860493842f2d7dc0c509",
+  "games": 5000,
+  "matchups_per_pair": 5000,
+  "baseline": {
+    "PA": 386126,
+    "AVG": 0.2339283601264432,
+    "OBP": 0.2957972268119733,
+    "SLG": 0.36891379436640354,
+    "K%": 20.55520736754324,
+    "BB%": 8.07612023018393,
+    "HR%": 2.4893428569948672,
+    "P/PA": 3.1950192424234576,
+    "R/G": 3.2196,
+    "HR/G": 0.9612
+  },
+  "mlb_2025": {
+    "AVG": 0.245,
+    "OBP": 0.315,
+    "SLG": 0.404,
+    "R/G": 4.45,
+    "HR/G": 1.1604938271604939,
+    "BB%": 8.412594293210889,
+    "K%": 22.220400131190555
+  },
+  "profiles": {
+    "Average": {
+      "contact": 50,
+      "power": 50,
+      "eye": 50
+    },
+    "Schwarber-like": {
+      "contact": 35,
+      "power": 95,
+      "eye": 90
+    },
+    "Ichiro-like": {
+      "contact": 95,
+      "power": 20,
+      "eye": 55
+    }
+  },
+  "pitching_ratings": {
+    "Average": 50,
+    "Elite": 90
+  },
+  "matchups": [
+    {
+      "hitter": "Average",
+      "pitcher": "Average",
+      "PA": 5000,
+      "AVG": 0.2373140857392826,
+      "OBP": 0.3026,
+      "SLG": 0.37554680664916884,
+      "K%": 20.54,
+      "BB%": 8.559999999999999,
+      "HR%": 2.62,
+      "P/PA": 3.2442
+    },
+    {
+      "hitter": "Schwarber-like",
+      "pitcher": "Average",
+      "PA": 5000,
+      "AVG": 0.23103932584269662,
+      "OBP": 0.343,
+      "SLG": 0.4595037453183521,
+      "K%": 22.900000000000002,
+      "BB%": 14.56,
+      "HR%": 5.26,
+      "P/PA": 3.5392
+    },
+    {
+      "hitter": "Ichiro-like",
+      "pitcher": "Average",
+      "PA": 5000,
+      "AVG": 0.3037037037037037,
+      "OBP": 0.3608,
+      "SLG": 0.3919389978213508,
+      "K%": 13.54,
+      "BB%": 8.200000000000001,
+      "HR%": 0.36,
+      "P/PA": 3.0814
+    },
+    {
+      "hitter": "Average",
+      "pitcher": "Elite",
+      "PA": 5000,
+      "AVG": 0.18953144786829887,
+      "OBP": 0.232,
+      "SLG": 0.27311101730688053,
+      "K%": 35.02,
+      "BB%": 5.24,
+      "HR%": 1.28,
+      "P/PA": 3.3234
+    },
+    {
+      "hitter": "Schwarber-like",
+      "pitcher": "Elite",
+      "PA": 5000,
+      "AVG": 0.1761439360284318,
+      "OBP": 0.2582,
+      "SLG": 0.3256330519768992,
+      "K%": 38.54,
+      "BB%": 9.959999999999999,
+      "HR%": 3.44,
+      "P/PA": 3.6212
+    },
+    {
+      "hitter": "Ichiro-like",
+      "pitcher": "Elite",
+      "PA": 5000,
+      "AVG": 0.25706452973428934,
+      "OBP": 0.2954,
+      "SLG": 0.3348797975537748,
+      "K%": 25.0,
+      "BB%": 5.16,
+      "HR%": 0.42,
+      "P/PA": 3.1358
+    }
+  ],
+  "baseline_counts": {
+    "R": 32196,
+    "PA": 386126,
+    "Double": 16196,
+    "pitches": 1233680,
+    "Strikeout": 79369,
+    "Field out": 178707,
+    "Single": 55783,
+    "Walk": 31184,
+    "Home run": 9612,
+    "Double play": 6430,
+    "Error": 7405,
+    "Triple": 1440
+  },
+  "source": "https://www.baseball-reference.com/tools/share.fcgi?id=j7IEM",
+  "notes": [
+    "All baseline ratings, including error tendency, are 50.",
+    "MLB reference is the rounded 2025 league-average row; BB% and K% derived from it.",
+    "Model OBP has no HBP or sacrifice flies. MLB OBP includes those.",
+    "Ratings are illustrative archetypes, not fitted player ratings.",
+    "Each matchup samples the first PA of an independent seeded game.",
+    "Same seed set is reused across profiles; comparisons are paired, not independent.",
+    "No calibration or engine coefficient changes were made."
+  ]
+}
