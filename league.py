@@ -62,6 +62,9 @@ def save(conn,state):
 
 def create(request):
     teams = [validate_team(t) for t in request['teams']]
+    for t in teams:
+        for group in ('lineup','pitchers'):
+            for p in t[group]: p['player_id']=uuid.uuid4().hex
     n = len(teams)
     repeats = int(request.get('games_per_opponent', 4))
     playoff = int(request.get('playoff_teams',4))
@@ -117,7 +120,7 @@ def play(conn,state,g):
     conn.execute('INSERT INTO games VALUES (?,?,?)',(state['id'],g['id'],json.dumps(result)))
     for side, team_id in enumerate((g['away'],g['home'])):
         for slot,p in enumerate(result['batting'][side]):
-            key=f'{team_id}:{slot}'
+            key=f"{team_id}:{state['teams'][team_id]['lineup'][slot].get('player_id',slot)}"
             totals=state['stats'][g['phase']].setdefault(key,dict(team=team_id,name=p['name'],G=0,AB=0,H=0,HR=0,BB=0,HBP=0,SF=0,SO=0,RBI=0))
             totals['G']+=1
             for stat in ('AB','H','HR','BB','HBP','SF','SO','RBI'): totals[stat]+=p[stat]
@@ -132,6 +135,13 @@ def advance(request):
         if state['model_version']!=MODEL_VERSION: raise ValueError('This league uses a different engine version; create a new league to use the current engine.')
         action=request.get('action','next')
         if action not in ('next','day','batch','playoffs'): raise ValueError('Unknown league action')
+        def check_ready(team_ids):
+            missing=[state['teams'][i]['name'] for i in team_ids if state.get('managed',{}).get(str(i)) and not state.get('ready',{}).get(str(i))]
+            if missing and request.get('override_ready') is not True:
+                raise ValueError('Waiting for ready teams: '+', '.join(missing))
+        def played(g):
+            play(conn,state,g)
+            for i in (g['away'],g['home']): state.setdefault('ready',{})[str(i)]=False
         if action=='playoffs':
             if state['phase']!='ready': raise ValueError('Finish the regular season before starting playoffs')
             state['seeds']=[r['team'] for r in standings(state)[:state['playoff_teams']]]
@@ -140,17 +150,21 @@ def advance(request):
         elif state['phase']=='regular':
             pending=[g for g in state['schedule'] if g['score'] is None]
             selected=pending[:1] if action=='next' else ([g for g in pending if g['day']==pending[0]['day']] if action=='day' else pending[:20])
-            for g in selected: play(conn,state,g)
+            if state.get('managed') and action=='batch' and request.get('override_ready') is not True:
+                selected=[g for g in pending if g['day']==pending[0]['day']]
+            check_ready({i for g in selected for i in (g['away'],g['home'])})
+            for g in selected: played(g)
             if all(g['score'] is not None for g in state['schedule']): state['phase']='ready'
         elif state['phase']=='playoffs':
             series=[s for s in state['rounds'][-1]['series'] if s['winner'] is None]
+            check_ready({state['seeds'][seed] for s in (series[:1] if action=='next' else series) for seed in (s['high'],s['low'])})
             for s in (series[:1] if action=='next' else series):
                 game_number=len(s['games'])
                 # Higher seed hosts games 1,2,5,7 (best-of-seven), or odd games otherwise.
                 high_home=game_number in (0,1,4,6) if state['best_of']==7 else game_number%2==0
                 high,low=state['seeds'][s['high']],state['seeds'][s['low']]
                 g=dict(id=f"{s['id']}g{game_number+1}",day=len(state['rounds']),away=low if high_home else high,home=high if high_home else low,phase='playoffs',score=None)
-                play(conn,state,g)
+                played(g)
                 s['games'].append(g)
                 winner=g['away'] if g['score'][0]>g['score'][1] else g['home']
                 index=0 if winner==high else 1
@@ -163,6 +177,7 @@ def advance(request):
                     state['champion']=state['seeds'][winners[0]];state['phase']='complete'
                 else: new_round(state,winners)
         else: raise ValueError('No games to advance in this phase')
+        state['lineup_epoch']=state.get('lineup_epoch',0)+1
         state['version']+=1
         save(conn,state)
     return view(state)
