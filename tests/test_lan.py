@@ -93,6 +93,6 @@ class LANTests(unittest.TestCase):
         self.assertEqual(status,200);self.assertEqual(s['teams'][0]['rotation_size'],2)
         selected=league.roster(s,0,1)
         self.assertEqual(selected['pitchers'][0]['name'],s['teams'][0]['pitchers'][1]['name'])
-        self.assertEqual(len(selected['pitchers']),3)
+        self.assertEqual(len(selected['pitchers']),12) # One starter and eleven relievers; other starter rests.
 
 if __name__=='__main__':unittest.main()

@@ -36,11 +36,11 @@ class LeagueTests(unittest.TestCase):
         self.assertEqual(sum(r['L'] for r in s['standings']),12)
         self.assertEqual(sum(r['RF'] for r in s['standings']),sum(r['RA'] for r in s['standings']))
         self.assertTrue(all(r['GP']==6 for r in s['standings']))
-        self.assertTrue(all(p['G']==6 for p in s['stats']['regular'].values()))
+        self.assertEqual(sum(p['G'] for p in s['stats']['regular'].values()),4*6*9)
         old=s
         s=self.step(s,'playoffs')
         with self.assertRaises(ValueError):self.step(old,'playoffs')
-        for _ in range(10):
+        for _ in range(20):
             if s['phase']=='complete':break
             s=self.step(s,'day')
         self.assertEqual(s['phase'],'complete')
@@ -84,5 +84,9 @@ class LeagueTests(unittest.TestCase):
         with self.assertRaises(ValueError):league.next_season({'id':s['id'],'version':old['version']})
         s=self.step(s)
         self.assertEqual(league.game(s['id'],'y2r1')['model_version'],s['model_version'])
+        s=self.step(s,'playoffs');s=self.step(s)
+        self.assertEqual(s['phase'],'complete')
+        self.assertEqual(league.game(s['id'],'y2p1s1g1')['score'],s['rounds'][0]['series'][0]['games'][0]['score'])
+        self.assertEqual(league.game(s['id'],'p1s1g1')['score'],old['rounds'][0]['series'][0]['games'][0]['score'])
 
 if __name__=='__main__':unittest.main()

@@ -4,6 +4,7 @@ import json
 import secrets
 from pathlib import Path
 import league
+import rosters
 from engine import validate_team
 
 KEY_FILE = Path(__file__).parent / 'data' / 'commissioner.key'
@@ -33,7 +34,7 @@ def invite(request):
     with league.connect() as conn:
         conn.execute('BEGIN IMMEDIATE')
         table(conn)
-        s=load(conn,request['id'])
+        s=load(conn,request['id']);rosters.prepare(s);league.ensure_player_ids(s)
         for team_id,t in enumerate(s['teams']):
             for group in ('lineup','pitchers'):
                 for slot,p in enumerate(t[group]):
@@ -68,27 +69,27 @@ def submit(request,who):
         if not admin:
             active=conn.execute('SELECT token_hash FROM managers WHERE league_id=? AND team=?',(who['league_id'],who['team'])).fetchone()
             if not active or active[0]!=who.get('token_hash'): raise PermissionError('This invitation was revoked.')
-        s=load(conn,request['id']);league.ensure_player_ids(s);i=request['team'];key=str(i)
+        s=load(conn,request['id']);rosters.prepare(s);league.ensure_player_ids(s);i=request['team'];key=str(i)
         if type(i) is not int or not 0<=i<len(s['teams']): raise ValueError('Unknown team')
         if s['phase']=='complete': raise ValueError('This league is complete.')
         revisions=s.setdefault('team_versions',{})
         if request.get('version')!=revisions.get(key,0): raise ValueError('Your team changed in another tab. Reload before saving.')
         if request.get('lineup_epoch')!=s.get('lineup_epoch',0): raise ValueError('League advanced. Reload to review the current day before saving.')
         if 'roster' in request:
-            raw=request['roster'];new=validate_team(raw)
+            raw=request['roster'];new=rosters.validate_full(raw)
             old=s['teams'][i]
             started=any(g['score'] is not None for g in s['schedule'])
             if started:
                 # Season player identities and abilities are immutable; order may change.
                 new['name']=old['name']
-                for group in ('lineup','pitchers'):
-                    existing={p['player_id']:p for p in old[group]}
-                    ids=[p.get('player_id') for p in raw[group]]
-                    if len(ids)!=len(existing) or set(ids)!=set(existing): raise ValueError('After opening day you may reorder existing players only.')
-                    new[group]=[existing[id] for id in ids]
+                for groups in (('lineup','bench'),('pitchers',)):
+                    existing={p['player_id']:p for group in groups for p in old[group]}
+                    ids=[p.get('player_id') for group in groups for p in raw[group]]
+                    if len(ids)!=len(existing) or set(ids)!=set(existing): raise ValueError('After opening day use existing roster players only.')
+                    for group in groups:new[group]=[{**existing[p['player_id']], 'position':p['position']} for p in raw[group]]
             else:
                 if any(t['name']==new['name'] for j,t in enumerate(s['teams']) if j!=i): raise ValueError('Team names must be unique.')
-                for group in ('lineup','pitchers'):
+                for group in rosters.GROUPS:
                     for p in new[group]: p['player_id']=secrets.token_hex(12)
             s['teams'][i]=new
         s.setdefault('ready',{})[key]=request.get('ready') is True

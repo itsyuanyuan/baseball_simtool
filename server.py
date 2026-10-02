@@ -2,9 +2,12 @@
 import json
 import socket
 import argparse
+import sqlite3
+import traceback
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from engine import simulate, demo_team
+import rosters
 import league
 import lan
 from urllib.parse import urlparse, parse_qs
@@ -46,7 +49,7 @@ class Handler(SimpleHTTPRequestHandler):
             if url.path == '/api/league': return self.reply(200, league.get(params['id'][0]))
             if url.path == '/api/league/archive': return self.reply(200, league.archive(params['id'][0],params['season'][0]))
             if url.path == '/api/league/game': return self.reply(200, league.game(params['id'][0],params['game'][0]))
-            if url.path == '/api/league/demo': return self.reply(200, [demo_team(name,i+10) for i,name in enumerate(('Harbor','Forest','Summit','Comets','Tigers','Falcons','Wolves','Stars','Bears','Foxes','Sharks','Storm','Owls','Kings','Rockets','Dragons'))])
+            if url.path == '/api/league/demo': return self.reply(200, [rosters.full_team(demo_team(name,i+10),i) for i,name in enumerate(('Harbor','Forest','Summit','Comets','Tigers','Falcons','Wolves','Stars','Bears','Foxes','Sharks','Storm','Owls','Kings','Rockets','Dragons'))])
         except PermissionError as exc: return self.reply(403,{'error':str(exc)})
         except (ValueError,KeyError) as exc: return self.reply(400,{'error':str(exc)})
         if self.path == '/api/demo':
@@ -79,6 +82,12 @@ class Handler(SimpleHTTPRequestHandler):
             self.reply(403,{'error':str(exc)})
         except (ValueError, TypeError, KeyError, OverflowError) as exc:
             self.reply(400, {'error': str(exc)})
+        except sqlite3.Error:
+            traceback.print_exc()
+            self.reply(500,{'error':'Database operation failed; this batch was rolled back. Reload the league before retrying.'})
+        except Exception:
+            traceback.print_exc()
+            self.reply(500,{'error':'The server could not complete this operation. Reload the saved league and check the server log.'})
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()

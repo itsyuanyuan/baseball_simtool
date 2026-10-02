@@ -3,7 +3,7 @@ import random
 
 RATINGS = ('stamina', 'contact', 'power', 'eye', 'velocity', 'movement', 'control', 'range', 'error', 'arm', 'sequencing')
 POSITIONS = ('C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH')
-MODEL_VERSION = '0.3-speed-development'
+MODEL_VERSION = '0.4-calendar-fatigue'
 # Neutral, 50-rated baseline. Slopes retain individual player differences.
 MODEL = dict(zone=.507, swing_zone=.68, chase=.30, contact=.85, foul=.48,
              homer=.044, hit=.300, double=23.5, triple=1.8,
@@ -29,6 +29,8 @@ def player(value):
         out[key] = rating
     out['speed']=float(ratings.get('speed',50))
     if not 0<=out['speed']<=100: raise ValueError('speed must be between 0 and 100')
+    out['energy']=float(value.get('energy',100))
+    if not 0<=out['energy']<=100: raise ValueError('energy must be between 0 and 100')
     if 'potential' in value:
         if not isinstance(value['potential'],dict): raise ValueError('potential must be an object')
         potential={}
@@ -53,8 +55,8 @@ def validate_team(team):
         raise ValueError('Each team must be an object')
     lineup = [player(p) for p in team['lineup']]
     pitchers = [player(p) for p in team['pitchers']]
-    if len(lineup) != 9 or not 1 <= len(pitchers) <= 12:
-        raise ValueError('Each team needs nine batters and 1–12 pitchers')
+    if len(lineup) != 9 or not 1 <= len(pitchers) <= 13:
+        raise ValueError('Each team needs nine batters and 1–13 pitchers')
     if sorted(p['position'] for p in lineup) != sorted(POSITIONS):
         raise ValueError('Lineup must contain C, 1B, 2B, 3B, SS, LF, CF, RF, DH exactly once')
     rotation_size=int(team.get('rotation_size',min(3,max(1,len(pitchers)-1))))
@@ -90,7 +92,7 @@ def simulate(request, *, max_innings=12):
                     raise ValueError('Simulation exceeded the half-inning safety limit; try another seed')
                 pi = active[defense]
                 pitcher = teams[defense]['pitchers'][pi]
-                limit = 45 + pitcher['stamina'] * .85
+                limit = (45 + pitcher['stamina'] * .85)*(.35+.65*pitcher['energy']/100)
                 if counts[defense][pi] >= limit and pi + 1 < len(counts[defense]):
                     active[defense] += 1
                     pi += 1
@@ -124,7 +126,7 @@ def simulate(request, *, max_innings=12):
                     pitching[defense][runner['pitcher']]['R'] += 1
                 runner = {'name': batter['name'], 'pitcher': pi,'speed':batter['speed'],'slot':bi}
                 for pitch_number in range(30):
-                    fatigue = max(0, counts[defense][pi] - (35 + pitcher['stamina'] * .65)) * .35
+                    fatigue = max(0, counts[defense][pi] - (35 + pitcher['stamina'] * .65)) * .35+(100-pitcher['energy'])*.25
                     control = pitcher['control'] - fatigue
                     movement = pitcher['movement'] - fatigue
                     velocity = pitcher['velocity'] - fatigue
