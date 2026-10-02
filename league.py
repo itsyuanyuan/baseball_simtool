@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sqlite3
 import uuid
+from development import develop
 from engine import simulate, validate_team, MODEL_VERSION
 
 DB = Path(__file__).parent / 'data' / 'leagues.sqlite3'
@@ -57,6 +58,18 @@ def standings(state):
 def view(state):
     return {**state,'standings':standings(state)}
 
+def ensure_player_ids(state):
+    """Deterministic legacy IDs allow old saved lineups to be reordered safely."""
+    for team_id,t in enumerate(state['teams']):
+        for group in ('lineup','pitchers'):
+            for slot,p in enumerate(t[group]):
+                if 'player_id' not in p:
+                    p['player_id']=f'legacy-{team_id}-{group}-{slot}'
+                    if group=='lineup':
+                        for totals in state['stats'].values():
+                            old=f'{team_id}:{slot}'
+                            if old in totals:totals[f"{team_id}:{p['player_id']}"]=totals.pop(old)
+
 def save(conn,state):
     conn.execute('INSERT OR REPLACE INTO leagues VALUES (?,?)',(state['id'],json.dumps(state)))
 
@@ -86,7 +99,8 @@ def get(league_id):
     with connect() as conn:
         row=conn.execute('SELECT state FROM leagues WHERE id=?',(league_id,)).fetchone()
     if not row: raise ValueError('League not found')
-    return view(json.loads(row[0]))
+    state=json.loads(row[0]);ensure_player_ids(state)
+    return view(state)
 
 def list_leagues():
     with connect() as conn: rows=conn.execute('SELECT state FROM leagues ORDER BY rowid DESC').fetchall()
@@ -101,10 +115,11 @@ def new_round(state, seeds):
 def roster(state, team_id, played):
     t=deepcopy(state['teams'][team_id])
     # First up to three pitchers form a rotation; remaining pitchers relieve.
-    rotation=min(3,max(1,len(t['pitchers'])-1))
+    rotation=t.get('rotation_size',min(3,max(1,len(t['pitchers'])-1)))
     starter=played%rotation
     order=[starter]+list(range(rotation,len(t['pitchers'])))
     t['pitchers']=[t['pitchers'][i] for i in order]
+    t['rotation_size']=1
     return t
 
 def play(conn,state,g):
@@ -121,9 +136,10 @@ def play(conn,state,g):
     for side, team_id in enumerate((g['away'],g['home'])):
         for slot,p in enumerate(result['batting'][side]):
             key=f"{team_id}:{state['teams'][team_id]['lineup'][slot].get('player_id',slot)}"
-            totals=state['stats'][g['phase']].setdefault(key,dict(team=team_id,name=p['name'],G=0,AB=0,H=0,HR=0,BB=0,HBP=0,SF=0,SO=0,RBI=0))
+            totals=state['stats'][g['phase']].setdefault(key,dict(team=team_id,name=p['name'],G=0,AB=0,H=0,HR=0,BB=0,HBP=0,SF=0,SO=0,RBI=0,SB=0,CS=0))
             totals['G']+=1
             for stat in ('AB','H','HR','BB','HBP','SF','SO','RBI'): totals[stat]+=p[stat]
+            for stat in ('SB','CS'): totals[stat]=totals.get(stat,0)+p.get(stat,0)
 
 def advance(request):
     with connect() as conn:
@@ -132,7 +148,10 @@ def advance(request):
         if not row: raise ValueError('League not found')
         state=json.loads(row[0])
         if request.get('version') != state['version']: raise ValueError('League changed in another tab. Reload it before continuing.')
-        if state['model_version']!=MODEL_VERSION: raise ValueError('This league uses a different engine version; create a new league to use the current engine.')
+        if state['model_version']!=MODEL_VERSION:
+            if state['model_version']!='0.2-calibrated': raise ValueError('This league uses an unsupported engine version.')
+            state.setdefault('model_history',[]).append(state['model_version'])
+            state['model_version']=MODEL_VERSION
         action=request.get('action','next')
         if action not in ('next','day','batch','playoffs'): raise ValueError('Unknown league action')
         def check_ready(team_ids):
@@ -186,3 +205,39 @@ def game(league_id,game_id):
     with connect() as conn: row=conn.execute('SELECT result FROM games WHERE league_id=? AND game_id=?',(league_id,game_id)).fetchone()
     if not row: raise ValueError('Game not found')
     return json.loads(row[0])
+
+def next_season(request):
+    with connect() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row=conn.execute('SELECT state FROM leagues WHERE id=?',(request['id'],)).fetchone()
+        if not row: raise ValueError('League not found')
+        s=json.loads(row[0])
+        if request.get('version')!=s['version']: raise ValueError('League changed. Reload before advancing the season.')
+        if s['phase']!='complete': raise ValueError('Finish the championship before advancing to next season.')
+        year=s.get('season',1)
+        conn.execute('CREATE TABLE IF NOT EXISTS seasons (league_id TEXT, season INTEGER, state TEXT, PRIMARY KEY(league_id,season))')
+        conn.execute('INSERT INTO seasons VALUES (?,?,?)',(s['id'],year,json.dumps(s)))
+        reports=[]
+        for team_id,t in enumerate(s['teams']):
+            for group in ('lineup','pitchers'):
+                for slot,p in enumerate(t[group]):
+                    p.setdefault('player_id',uuid.uuid4().hex)
+                    report=develop(p,f"{s['seed']}:development:{year+1}:{p['player_id']}")
+                    reports.append({'team':team_id,**report})
+        s['development_report']=reports
+        s['season']=year+1
+        s.setdefault('past_seasons',[]).append({'season':year,'champion':s['teams'][s['champion']]['name']})
+        s['schedule']=schedule(len(s['teams']),s['games_per_opponent'])
+        for g in s['schedule']:g['id']=f"y{year+1}{g['id']}"
+        s.update(phase='regular',rounds=[],champion=None,stats={'regular':{},'playoffs':{}},ready={},model_version=MODEL_VERSION)
+        s.pop('seeds',None)
+        s['version']+=1;s['lineup_epoch']=s.get('lineup_epoch',0)+1
+        save(conn,s)
+    return view(s)
+
+def archive(league_id,season):
+    with connect() as conn:
+        conn.execute('CREATE TABLE IF NOT EXISTS seasons (league_id TEXT, season INTEGER, state TEXT, PRIMARY KEY(league_id,season))')
+        row=conn.execute('SELECT state FROM seasons WHERE league_id=? AND season=?',(league_id,int(season))).fetchone()
+    if not row:raise ValueError('Archived season not found')
+    return view(json.loads(row[0]))

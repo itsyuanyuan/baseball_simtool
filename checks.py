@@ -22,6 +22,7 @@ def team(name):
     return {'name': name, 'lineup': [p(pos) for pos in POSITIONS], 'pitchers': [p('P') for _ in range(4)]}
 
 def record(counts, event):
+    if event.get('plate_appearance') is False: return
     counts['PA'] += 1
     counts[event['outcome']] += 1
     counts['pitches'] += len(event['pitches'])

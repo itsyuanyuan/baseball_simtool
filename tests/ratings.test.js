@@ -2,6 +2,17 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { normalizeRating } = require('../public/ratings.js');
 const { mapSnapshot, detectRole } = require('../public/ratings.js');
+const {unwrapCareer,careerPotential}=require('../public/ratings.js');
+
+test('S envelope ignores Seed; potential takes per-ability peaks including speed and inverted errors',()=>{
+  const s=unwrapCareer({Seed:'ignored',S:{name:'A',pastab:{16:{con:30,spd:40,fld:25},24:{con:80,spd:70,fld:75},36:{con:60,spd:30,fld:65}}}});
+  const current=mapSnapshot(s.pastab[16],'yakyolife');
+  const p=careerPotential(s.pastab,current,'yakyolife');
+  assert.equal(current.contact,17);assert.equal(p.contact,100);
+  assert.equal(current.speed,33);assert.equal(p.speed,83);
+  assert.equal(current.error,92);assert.equal(p.error,8);
+  assert.equal(p.velocity,50);
+});
 
 test('Actual partial role saves map abbreviated abilities without a catching field', () => {
   const saves = [

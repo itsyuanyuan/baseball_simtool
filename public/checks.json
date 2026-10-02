@@ -1,6 +1,6 @@
 {
-  "engine_sha256": "5185216b10a7e8152a57afb919449bb0749eabf9d15c7ff3217456bed9920594",
-  "model_version": "0.2-calibrated",
+  "engine_sha256": "a2a9bb1e8efe01a3faed6d6c6306a69be1a375eadb1b1115b48a95442774c88b",
+  "model_version": "0.3-speed-development",
   "coefficients": {
     "zone": 0.507,
     "swing_zone": 0.68,
@@ -23,16 +23,16 @@
   "games": 10000,
   "matchups_per_pair": 5000,
   "baseline": {
-    "PA": 784521,
-    "AVG": 0.24771697085840763,
-    "OBP": 0.3163293270670893,
-    "SLG": 0.406238464639036,
-    "K%": 22.099982027249748,
-    "BB%": 8.376193881362003,
-    "HR%": 3.045042771321609,
-    "P/PA": 3.356839396268551,
-    "R/G": 4.4162,
-    "HR/G": 1.19445
+    "PA": 778069,
+    "AVG": 0.24755388582708612,
+    "OBP": 0.3163228454031712,
+    "SLG": 0.4055072513378747,
+    "K%": 22.141995118684846,
+    "BB%": 8.396684612804263,
+    "HR%": 3.023639291630948,
+    "P/PA": 3.3596557631778157,
+    "R/G": 4.4183,
+    "HR/G": 1.1763
   },
   "mlb_2025": {
     "AVG": 0.245,
@@ -139,20 +139,20 @@
     }
   ],
   "baseline_counts": {
-    "R": 88324,
-    "PA": 784521,
-    "Field out": 339254,
-    "pitches": 2633511,
-    "Walk": 65713,
-    "Double": 35098,
-    "Single": 113505,
-    "Strikeout": 173379,
-    "Home run": 23889,
-    "Error": 9155,
-    "Double play": 10125,
-    "Sacrifice fly": 4441,
-    "Triple": 2660,
-    "Hit by pitch": 7302
+    "R": 88366,
+    "PA": 778069,
+    "Field out": 337127,
+    "pitches": 2614044,
+    "Walk": 65332,
+    "Double": 34867,
+    "Single": 112521,
+    "Strikeout": 172280,
+    "Home run": 23526,
+    "Error": 9175,
+    "Double play": 8967,
+    "Sacrifice fly": 4399,
+    "Triple": 2649,
+    "Hit by pitch": 7226
   },
   "source": "https://www.baseball-reference.com/tools/share.fcgi?id=j7IEM",
   "notes": [

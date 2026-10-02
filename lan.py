@@ -58,15 +58,18 @@ def load(conn,id):
     return json.loads(row[0])
 
 def submit(request,who):
-    if who['role']!='manager': raise PermissionError('Use a team invitation to submit a lineup.')
-    if request.get('id')!=who['league_id'] or request.get('team')!=who['team']:
+    admin=who['role']=='commissioner'
+    if who['role'] not in ('manager','commissioner'): raise PermissionError('Sign in to manage a team.')
+    if not admin and (request.get('id')!=who['league_id'] or request.get('team')!=who['team']):
         raise PermissionError('You can only manage your assigned team.')
     with league.connect() as conn:
         conn.execute('BEGIN IMMEDIATE')
         table(conn)
-        active=conn.execute('SELECT token_hash FROM managers WHERE league_id=? AND team=?',(who['league_id'],who['team'])).fetchone()
-        if not active or active[0]!=who.get('token_hash'): raise PermissionError('This invitation was revoked.')
-        s=load(conn,who['league_id']);i=who['team'];key=str(i)
+        if not admin:
+            active=conn.execute('SELECT token_hash FROM managers WHERE league_id=? AND team=?',(who['league_id'],who['team'])).fetchone()
+            if not active or active[0]!=who.get('token_hash'): raise PermissionError('This invitation was revoked.')
+        s=load(conn,request['id']);league.ensure_player_ids(s);i=request['team'];key=str(i)
+        if type(i) is not int or not 0<=i<len(s['teams']): raise ValueError('Unknown team')
         if s['phase']=='complete': raise ValueError('This league is complete.')
         revisions=s.setdefault('team_versions',{})
         if request.get('version')!=revisions.get(key,0): raise ValueError('Your team changed in another tab. Reload before saving.')

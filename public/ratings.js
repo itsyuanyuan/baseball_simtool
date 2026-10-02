@@ -16,7 +16,7 @@ const ratingAliases = {
   velocity: ['vel','velocity'], movement: ['brk','movement'], control: ['ctl','control'],
   range: ['rng','range','defensiveRange','defensive_range'],
   error: ['fld','error','errorRate','error_rate'], arm: ['arm'],
-  sequencing: ['cat','sequencing','pitchSequencing','pitch_sequencing']
+  sequencing: ['cat','sequencing','pitchSequencing','pitch_sequencing'], speed:['spd','speed']
 };
 function detectRole(source) {
   const has = key => ratingAliases[key].some(k => Number.isFinite(source[k]));
@@ -37,4 +37,26 @@ function mapSnapshot(source, scale, mappings, fieldingHigherBetter=true) {
   }
   return result;
 }
-if (typeof module !== 'undefined') module.exports = { normalizeRating, ratingAliases, detectRole, mapSnapshot };
+function unwrapCareer(value) {
+  const s=value.S??value.state??value;
+  if (!s||typeof s!=='object'||Array.isArray(s)) throw Error('S must be a JSON object containing the career history.');
+  return s;
+}
+function careerPotential(history, current, scale, mappings, higherBetter=true) {
+  const potential={...current};
+  for (const [key, aliases] of Object.entries(ratingAliases)) {
+    const field=mappings?.[key];
+    if (mappings&&!field) continue;
+    for (const [age,value] of Object.entries(history)) {
+      if (!/^\d+$/.test(age)||!value||typeof value!=='object') continue;
+      const source=value.ratings||value.abilities||value;
+      const f=field||aliases.find(a=>Number.isFinite(source[a]));
+      if (!f||!Number.isFinite(source[f])) continue;
+      const n=normalizeRating(source[f],scale);
+      const rating=key==='error'&&f==='fld'&&higherBetter?100-n:n;
+      potential[key]=key==='error'?Math.min(potential[key],rating):Math.max(potential[key],rating);
+    }
+  }
+  return potential;
+}
+if (typeof module !== 'undefined') module.exports = { normalizeRating, ratingAliases, detectRole, mapSnapshot, unwrapCareer, careerPotential };

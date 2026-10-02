@@ -42,7 +42,7 @@ class EngineTests(unittest.TestCase):
         for seed in range(150):
             r = simulate(self.request(f'accounting-v2-{seed}'))
             for side, half in enumerate(('Top', 'Bottom')):
-                events = [p for p in r['log'] if p['half'] == half]
+                events = [p for p in r['log'] if p['half'] == half and p.get('plate_appearance') is not False]
                 stats = r['batting'][side]
                 self.assertEqual(len(events), sum(p['AB']+p['BB']+p['HBP']+p['SF'] for p in stats))
                 for outcome, stat in [('Walk', 'BB'), ('Hit by pitch', 'HBP'), ('Sacrifice fly', 'SF')]:
@@ -78,5 +78,22 @@ class EngineTests(unittest.TestCase):
                 strikeouts+=sum(p['SO'] for p in result['batting'][0])
             totals.append(strikeouts)
         self.assertGreater(totals[1],totals[0])
+
+    def test_speed_changes_steals_and_running_accounting(self):
+        totals=[]
+        for speed in (10,90):
+            steals=0
+            for seed in range(150):
+                req={'away':team('Away'),'home':team('Home'),'seed':f'speed-{seed}'}
+                for p in req['away']['lineup']:p['speed']=speed
+                r=simulate(req)
+                sb=sum(p['SB'] for p in r['batting'][0]);cs=sum(p['CS'] for p in r['batting'][0])
+                events=[p for p in r['log'] if p['half']=='Top']
+                self.assertEqual(sb,sum(p['outcome']=='Stolen base' for p in events))
+                self.assertEqual(cs,sum(p['outcome']=='Caught stealing' for p in events))
+                self.assertEqual(sum(p['AB']+p['BB']+p['HBP']+p['SF'] for p in r['batting'][0]),sum(p.get('plate_appearance') is not False for p in events))
+                steals+=sb
+            totals.append(steals)
+        self.assertGreater(totals[1],totals[0]*2)
 
 if __name__ == '__main__': unittest.main()

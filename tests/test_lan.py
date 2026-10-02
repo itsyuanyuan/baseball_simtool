@@ -38,8 +38,11 @@ class LANTests(unittest.TestCase):
             self.assertEqual(self.post('/api/league/advance',{},key)[0],403)
             self.assertEqual(self.post('/api/league/create',{},key)[0],403)
             self.assertEqual(self.post('/api/lan/invite',{},key)[0],403)
+            self.assertEqual(self.post('/api/league/next-season',{},key)[0],403)
+        self.assertEqual(self.post('/api/team/save',self.submission())[0],403)
         req=self.submission();req['team']=1
         self.assertEqual(self.post('/api/lan/submit',req,self.key)[0],403)
+        self.assertEqual(self.post('/api/team/save',req,self.key)[0],403)
         self.assertEqual(self.post('/api/lan/submit',self.submission(),self.key,'http://evil.example')[0],403)
     def test_ready_override_stale_and_stat_identity(self):
         s=league.get(self.s['id'])
@@ -82,5 +85,14 @@ class LANTests(unittest.TestCase):
         status,_=self.post('/api/league/advance',dict(id=s['id'],version=s['version'],action='day'),lan.host_key())
         self.assertEqual(status,200)
         self.assertEqual(self.post('/api/lan/submit',pending,self.key)[0],400)
+
+    def test_solo_team_save_without_login_and_rotation(self):
+        self.server.lan_mode=False
+        req=self.submission();req['roster']['rotation_size']=2
+        status,s=self.post('/api/team/save',req)
+        self.assertEqual(status,200);self.assertEqual(s['teams'][0]['rotation_size'],2)
+        selected=league.roster(s,0,1)
+        self.assertEqual(selected['pitchers'][0]['name'],s['teams'][0]['pitchers'][1]['name'])
+        self.assertEqual(len(selected['pitchers']),3)
 
 if __name__=='__main__':unittest.main()

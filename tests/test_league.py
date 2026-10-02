@@ -66,4 +66,23 @@ class LeagueTests(unittest.TestCase):
         self.assertEqual(s['phase'],'complete')
         self.assertEqual(len(s['rounds'][0]['series'][0]['games']),1)
 
+    def test_next_season_archives_and_preserves_league(self):
+        s=self.create(2,1)
+        s['teams'][0]['lineup'][0]['age']=19
+        s['teams'][0]['lineup'][0]['contact']=30
+        s['teams'][0]['lineup'][0]['potential']={'contact':90}
+        with league.connect() as conn:league.save(conn,s)
+        s=self.step(s);s=self.step(s,'playoffs');s=self.step(s)
+        old_score=league.game(s['id'],'r1')['score'];old=s
+        s=league.next_season({'id':s['id'],'version':s['version']})
+        self.assertEqual(s['id'],old['id']);self.assertEqual(s['season'],2)
+        self.assertEqual(s['teams'][0]['lineup'][0]['age'],20)
+        self.assertGreater(s['teams'][0]['lineup'][0]['contact'],30)
+        self.assertEqual(s['stats'],{'regular':{},'playoffs':{}})
+        self.assertEqual(league.archive(s['id'],1)['champion'],old['champion'])
+        self.assertEqual(league.game(s['id'],'r1')['score'],old_score)
+        with self.assertRaises(ValueError):league.next_season({'id':s['id'],'version':old['version']})
+        s=self.step(s)
+        self.assertEqual(league.game(s['id'],'y2r1')['model_version'],s['model_version'])
+
 if __name__=='__main__':unittest.main()

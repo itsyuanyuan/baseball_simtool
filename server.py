@@ -44,6 +44,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply(200,{'addresses':addresses,'port':self.server.server_port})
             if url.path == '/api/leagues': return self.reply(200, league.list_leagues())
             if url.path == '/api/league': return self.reply(200, league.get(params['id'][0]))
+            if url.path == '/api/league/archive': return self.reply(200, league.archive(params['id'][0],params['season'][0]))
             if url.path == '/api/league/game': return self.reply(200, league.game(params['id'][0],params['game'][0]))
             if url.path == '/api/league/demo': return self.reply(200, [demo_team(name,i+10) for i,name in enumerate(('Harbor','Forest','Summit','Comets','Tigers','Falcons','Wolves','Stars','Bears','Foxes','Sharks','Storm','Owls','Kings','Rockets','Dragons'))])
         except PermissionError as exc: return self.reply(403,{'error':str(exc)})
@@ -54,20 +55,25 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply(404, {'error':'Unknown API endpoint. Restart the current server.py if the page and server versions differ.'})
         super().do_GET()
     def do_POST(self):
-        routes={'/api/simulate':simulate,'/api/league/create':league.create,'/api/league/advance':league.advance,'/api/lan/invite':lan.invite,'/api/lan/submit':None}
+        routes={'/api/simulate':simulate,'/api/league/create':league.create,'/api/league/advance':league.advance,'/api/league/next-season':league.next_season,'/api/lan/invite':lan.invite,'/api/lan/submit':None,'/api/team/save':None}
         if self.path not in routes: return self.reply(404, {'error': 'Unknown endpoint'})
         try:
             origin=self.headers.get('Origin')
             if origin and urlparse(origin).netloc != self.headers.get('Host'):
                 raise PermissionError('Cross-origin changes are not allowed.')
-            if self.path=='/api/lan/invite' or (getattr(self.server,'lan_mode',False) and self.path in ('/api/league/create','/api/league/advance')):
+            if self.path=='/api/lan/invite' or (getattr(self.server,'lan_mode',False) and self.path in ('/api/league/create','/api/league/advance','/api/league/next-season')):
                 self.require_commissioner()
             length = int(self.headers.get('Content-Length', 0))
             if not 0 < length <= 1_000_000: raise ValueError('Request must be 1 byte–1 MB')
             request = json.loads(self.rfile.read(length))
             if not isinstance(request,dict): raise ValueError('Request must be an object')
+            if self.path=='/api/league/advance' and not getattr(self.server,'lan_mode',False):
+                request['override_ready']=True
             if self.path=='/api/lan/submit':
                 return self.reply(200,lan.submit(request,lan.identity(self.token())))
+            if self.path=='/api/team/save':
+                who=lan.identity(self.token()) if getattr(self.server,'lan_mode',False) else {'role':'commissioner'}
+                return self.reply(200,lan.submit(request,who))
             self.reply(200, routes[self.path](request))
         except PermissionError as exc:
             self.reply(403,{'error':str(exc)})
