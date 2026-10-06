@@ -2,12 +2,14 @@
 from copy import deepcopy
 from contextlib import contextmanager
 import json
+import hashlib
 from pathlib import Path
 import sqlite3
 import uuid
 from development import develop
 from datetime import date
 import rosters
+import season_stats
 from engine import simulate, validate_team, MODEL_VERSION
 
 DB = Path(__file__).parent / 'data' / 'leagues.sqlite3'
@@ -98,6 +100,14 @@ def create(request):
                  playoff_teams=playoff,best_of=best, schedule=schedule(n,repeats), rounds=[], champion=None,
                  stats={'regular':{},'playoffs':{}},start_date=start_date,calendar_day=0,roster_version=1)
     rosters.prepare(state)
+    state['pitching_stats']={'regular':{},'playoffs':{}}
+    for t in teams:
+        for group in rosters.GROUPS:
+            for p in t[group]:
+                if p.get('history') and not p.get('is_ghost'):
+                    p['career_id']=hashlib.sha256(json.dumps({'name':p['name'],'history':p['history']},sort_keys=True).encode()).hexdigest()[:24]
+                    if p['career_id'] in state.get('library',{}):raise ValueError('A career can occupy only one league roster slot. Remove the duplicate player.')
+                    state.setdefault('library',{})[p['career_id']]=deepcopy(p)
     with connect() as conn: save(conn,state)
     return view(state)
 
@@ -106,6 +116,7 @@ def get(league_id):
         row=conn.execute('SELECT state FROM leagues WHERE id=?',(league_id,)).fetchone()
     if not row: raise ValueError('League not found')
     state=json.loads(row[0]);rosters.prepare(state);ensure_player_ids(state)
+    with connect() as conn:season_stats.migrate(conn,state)
     return view(state)
 
 def list_leagues():
@@ -142,10 +153,13 @@ def play(conn,state,g):
         rosters.charge(state,team_id,selected[side],result,side)
         for slot,p in enumerate(result['batting'][side]):
             key=f"{team_id}:{selected[side]['lineup'][slot]['player_id']}"
-            totals=state['stats'][g['phase']].setdefault(key,dict(team=team_id,name=p['name'],G=0,AB=0,H=0,HR=0,BB=0,HBP=0,SF=0,SO=0,RBI=0,SB=0,CS=0))
+            totals=state['stats'][g['phase']].setdefault(key,dict(team=team_id,name=p['name'],player_id=selected[side]['lineup'][slot]['player_id'],G=0,AB=0,H=0,HR=0,BB=0,HBP=0,SF=0,SO=0,RBI=0,SB=0,CS=0))
             totals['G']+=1
             for stat in ('AB','H','HR','BB','HBP','SF','SO','RBI'): totals[stat]+=p[stat]
             for stat in ('SB','CS'): totals[stat]=totals.get(stat,0)+p.get(stat,0)
+            for stat in ('D','T','R'):
+                if totals['G']==1 or stat in totals:totals[stat]=totals.get(stat,0)+p.get(stat,0)
+    season_stats.add_pitching(state,g,result,selected)
 
 def advance(request):
     with connect() as conn:
@@ -154,9 +168,9 @@ def advance(request):
         if not row: raise ValueError('League not found')
         state=json.loads(row[0])
         if request.get('version') != state['version']: raise ValueError('League changed in another tab. Reload it before continuing.')
-        rosters.prepare(state);ensure_player_ids(state)
+        rosters.prepare(state);ensure_player_ids(state);season_stats.migrate(conn,state)
         if state['model_version']!=MODEL_VERSION:
-            if state['model_version'] not in ('0.2-calibrated','0.3-speed-development'): raise ValueError('This league uses an unsupported engine version.')
+            if state['model_version'] not in ('0.2-calibrated','0.3-speed-development','0.4-calendar-fatigue'): raise ValueError('This league uses an unsupported engine version.')
             state.setdefault('model_history',[]).append(state['model_version'])
             state['model_version']=MODEL_VERSION
         action=request.get('action','next')
@@ -232,7 +246,7 @@ def next_season(request):
         s=json.loads(row[0])
         if request.get('version')!=s['version']: raise ValueError('League changed. Reload before advancing the season.')
         if s['phase']!='complete': raise ValueError('Finish the championship before advancing to next season.')
-        rosters.prepare(s);ensure_player_ids(s)
+        rosters.prepare(s);ensure_player_ids(s);season_stats.migrate(conn,s)
         year=s.get('season',1)
         conn.execute('CREATE TABLE IF NOT EXISTS seasons (league_id TEXT, season INTEGER, state TEXT, PRIMARY KEY(league_id,season))')
         conn.execute('INSERT INTO seasons VALUES (?,?,?)',(s['id'],year,json.dumps(s)))
@@ -241,9 +255,11 @@ def next_season(request):
             for group in rosters.GROUPS:
                 for slot,p in enumerate(t[group]):
                     p.setdefault('player_id',uuid.uuid4().hex)
-                    report=develop(p,f"{s['seed']}:development:{year+1}:{p['player_id']}")
+                    report=develop(p,f"{s['seed']}:development:{year+1}:{p['player_id']}",season_stats.player_totals(s,p),season_stats.player_totals(s,p,'pitching'))
                     p['energy']=100
                     reports.append({'team':team_id,**report})
+        for p in s.get('released',{}).values():
+            develop(p,f"{s['seed']}:development:{year+1}:{p['player_id']}",season_stats.player_totals(s,p),season_stats.player_totals(s,p,'pitching'));p['energy']=100
         s['development_report']=reports
         s['season']=year+1
         previous_start=date.fromisoformat(s['start_date'])
@@ -253,6 +269,9 @@ def next_season(request):
         s['schedule']=schedule(len(s['teams']),s['games_per_opponent'])
         for g in s['schedule']:g['id']=f"y{year+1}{g['id']}"
         s.update(phase='regular',rounds=[],champion=None,stats={'regular':{},'playoffs':{}},ready={},model_version=MODEL_VERSION)
+        s['pitching_stats']={'regular':{},'playoffs':{}}
+        for offer in s.get('trades',[]):
+            if offer['status']=='pending':offer['status']='expired'
         s.pop('seeds',None)
         rosters.prepare(s)
         s['version']+=1;s['lineup_epoch']=s.get('lineup_epoch',0)+1

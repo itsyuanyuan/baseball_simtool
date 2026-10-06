@@ -89,8 +89,21 @@ def submit(request,who):
                     for group in groups:new[group]=[{**existing[p['player_id']], 'position':p['position']} for p in raw[group]]
             else:
                 if any(t['name']==new['name'] for j,t in enumerate(s['teams']) if j!=i): raise ValueError('Team names must be unique.')
+                existing={p['player_id']:p for g in rosters.GROUPS for p in old[g]}
+                seen=set()
                 for group in rosters.GROUPS:
-                    for p in new[group]: p['player_id']=secrets.token_hex(12)
+                    for p in new[group]:
+                        identity=p.get('player_id')
+                        if identity in existing:
+                            if identity in seen:raise ValueError('A player cannot occupy two roster slots.')
+                            seen.add(identity)
+                            original=existing[identity]
+                            if original.get('career_id'):
+                                position=p['position'];p.clear();p.update(original);p['position']=position
+                            else:
+                                p.pop('career_id',None);p['is_ghost']=original.get('is_ghost',True)
+                        else:
+                            p['player_id']=secrets.token_hex(12);p.pop('career_id',None);p['is_ghost']=True
             s['teams'][i]=new
         s.setdefault('ready',{})[key]=request.get('ready') is True
         revisions[key]=revisions.get(key,0)+1

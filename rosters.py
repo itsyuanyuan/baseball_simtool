@@ -57,6 +57,9 @@ def prepare(s):
     if legacy:
         s['calendar_day']=max(s['calendar_day'],last)
         s['calendar_date']=day_date(s,max(1,s['calendar_day']))
+    for t in s['teams']:
+        for group in GROUPS:
+            for p in t[group]:p.setdefault('is_ghost',not bool(p.get('history') or p.get('career_id')))
 
 def day_date(s,day):
     return (date.fromisoformat(s['start_date'])+timedelta(days=day-1)).isoformat()
@@ -71,6 +74,9 @@ def recover_to(s,day):
                     recovery=(14+p['stamina']*.12) if group=='pitchers' else (8+p['stamina']*.08)
                     p['energy']=round(min(100,p.get('energy',100)+elapsed*recovery),2)
         s['calendar_day']=day;s['calendar_date']=day_date(s,day)
+        for p in s.get('released',{}).values():
+            recovery=14+p['stamina']*.12 if p['position']=='P' else 8+p['stamina']*.08
+            p['energy']=round(min(100,p.get('energy',100)+elapsed*recovery),2)
 
 def game_team(s,team_id,played):
     t=deepcopy(s['teams'][team_id])

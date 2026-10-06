@@ -33,6 +33,17 @@ class LANTests(unittest.TestCase):
     def submission(self,ready=True):
         s=league.get(self.s['id'])
         return dict(id=s['id'],team=0,version=s.get('team_versions',{}).get('0',0),lineup_epoch=s.get('lineup_epoch',0),roster=s['teams'][0],ready=ready)
+    def test_http_career_routes_require_manager_and_allow_midseason_replacement(self):
+        self.s=league.advance(dict(id=self.s['id'],version=league.get(self.s['id'])['version'],action='day',override_ready=True))
+        p=demo_team('Real')['lineup'][0];p.pop('is_ghost');p['name']='Imported career';p['history']={'22':{'contact':40},'23':{'contact':50}}
+        req=dict(id=self.s['id'],version=self.s['version'],team=0,player=p)
+        self.assertEqual(self.post('/api/transactions/import',req)[0],403)
+        code,s=self.post('/api/transactions/import',req,self.key);self.assertEqual(code,200)
+        req=dict(id=s['id'],version=s['version'],team=0,career_id=next(iter(s['library'])),group='lineup',slot=0)
+        code,s=self.post('/api/transactions/assign',req,self.key);self.assertEqual(code,200)
+        self.assertEqual(s['teams'][0]['lineup'][0]['name'],'Imported career')
+        self.assertEqual(s['teams'][0]['lineup'][0]['history'],p['history'])
+
     def test_http_authorization(self):
         for key in ('',self.key):
             self.assertEqual(self.post('/api/league/advance',{},key)[0],403)

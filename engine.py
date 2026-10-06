@@ -3,7 +3,7 @@ import random
 
 RATINGS = ('stamina', 'contact', 'power', 'eye', 'velocity', 'movement', 'control', 'range', 'error', 'arm', 'sequencing')
 POSITIONS = ('C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH')
-MODEL_VERSION = '0.4-calendar-fatigue'
+MODEL_VERSION = '0.5-careers-trades'
 # Neutral, 50-rated baseline. Slopes retain individual player differences.
 MODEL = dict(zone=.507, swing_zone=.68, chase=.30, contact=.85, foul=.48,
              homer=.044, hit=.300, double=23.5, triple=1.8,
@@ -30,21 +30,37 @@ def player(value):
     out['speed']=float(ratings.get('speed',50))
     if not 0<=out['speed']<=100: raise ValueError('speed must be between 0 and 100')
     out['energy']=float(value.get('energy',100))
+    if 'is_ghost' in value:out['is_ghost']=value['is_ghost'] is True
     if not 0<=out['energy']<=100: raise ValueError('energy must be between 0 and 100')
+    for key in ('player_id','career_id'):
+        if key in value:out[key]=str(value[key])[:100]
+    if 'history' in value:
+        history=value['history']
+        if not isinstance(history,dict) or len(history)>91:raise ValueError('Invalid career history')
+        out['history']={}
+        for age,ratings_at_age in history.items():
+            if not str(age).isdigit() or not 10<=int(age)<=100 or not isinstance(ratings_at_age,dict):raise ValueError('Invalid historical age')
+            normalized={}
+            for key in (*RATINGS,'speed'):
+                if key not in ratings_at_age:continue
+                number=float(ratings_at_age[key])
+                if not 0<=number<=100:raise ValueError('Historical ratings must be 0–100')
+                normalized[key]=number
+            out['history'][str(age)]=normalized
     if 'potential' in value:
         if not isinstance(value['potential'],dict): raise ValueError('potential must be an object')
         potential={}
         for key in (*RATINGS,'speed'):
             p=float(value['potential'].get(key,out[key]))
             if not 0<=p<=100: raise ValueError('Potential must be between 0 and 100')
-            potential[key]=min(p,out[key]) if key=='error' else max(p,out[key])
+            potential[key]=p
         out['potential']=potential
     return out
 
 def demo_team(name, offset=0):
     rng = random.Random(120 + offset)
     def make(i, pos):
-        p = {'name': f'{name} {i+1:02}', 'age': 22 + i % 12, 'position': pos}
+        p = {'name': f'{name} {i+1:02}', 'age': 22 + i % 12, 'position': pos, 'is_ghost':True}
         p.update({key: rng.randint(38, 78) for key in RATINGS})
         p['error'] = rng.randint(8, 28)
         return p
@@ -75,8 +91,12 @@ def simulate(request, *, max_innings=12):
         raise ValueError('Park factor must be 0.7–1.3')
     score, hits, errors, order, active = [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]
     counts = [[0] * len(t['pitchers']) for t in teams]
-    batting = [[dict(name=p['name'], AB=0, H=0, HR=0, BB=0, HBP=0, SF=0, SO=0, RBI=0, SB=0, CS=0) for p in t['lineup']] for t in teams]
-    pitching = [[dict(name=p['name'], pitches=0, outs=0, H=0, R=0, BB=0, SO=0) for p in t['pitchers']] for t in teams]
+    batting = [[dict(name=p['name'], AB=0, H=0, HR=0, BB=0, HBP=0, SF=0, SO=0, RBI=0, SB=0, CS=0, R=0, D=0, T=0) for p in t['lineup']] for t in teams]
+    pitching = [[dict(name=p['name'], pitches=0, outs=0, H=0, R=0, BB=0, SO=0, BF=0, HR=0, HBP=0) for p in t['pitchers']] for t in teams]
+    for side,t in enumerate(teams):
+        for group,stats in (('lineup',batting),('pitchers',pitching)):
+            for p,row in zip(t[group],stats[side]):
+                if 'player_id' in p:row['player_id']=p['player_id']
     innings, log = [[], []], []
     def chance(p):
         return rng.random() < max(.005, min(.995, p))
@@ -113,6 +133,7 @@ def simulate(request, *, max_innings=12):
                 order[side] += 1
                 batter = teams[side]['lineup'][bi]
                 bs = batting[side][bi]
+                ps['BF'] += 1
                 balls, strikes, pitches, previous = 0, 0, [], None
                 start_outs = outs
                 runs_this = 0
@@ -120,6 +141,7 @@ def simulate(request, *, max_innings=12):
                     nonlocal runs, runs_this
                     if inning >= 9 and side == 1 and score[1] > score[0] and outcome != 'Home run':
                         return
+                    batting[side][runner['slot']]['R'] += 1
                     score[side] += 1
                     runs += 1
                     runs_this += 1
@@ -169,6 +191,7 @@ def simulate(request, *, max_innings=12):
                     outcome = 'Walk' if balls == 4 else 'Hit by pitch'
                     bs['BB' if balls == 4 else 'HBP'] += 1
                     if balls == 4: ps['BB'] += 1
+                    else: ps['HBP'] += 1
                     if bases[0]:
                         if bases[1]:
                             if bases[2]: run(bases[2])
@@ -190,6 +213,7 @@ def simulate(request, *, max_innings=12):
                         bases = [None, None, None]
                         bs['H'] += 1
                         bs['HR'] += 1
+                        ps['HR'] += 1
                         hits[side] += 1
                         ps['H'] += 1
                     else:
@@ -206,6 +230,8 @@ def simulate(request, *, max_innings=12):
                             else:
                                 hits[side] += 1
                                 bs['H'] += 1
+                                if distance==2:bs['D']+=1
+                                if distance==3:bs['T']+=1
                                 ps['H'] += 1
                             advanced = [None, None, None]
                             for index in (2, 1, 0):

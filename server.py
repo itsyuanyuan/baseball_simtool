@@ -10,6 +10,7 @@ from engine import simulate, demo_team
 import rosters
 import league
 import lan
+import transactions
 from urllib.parse import urlparse, parse_qs
 
 PUBLIC = Path(__file__).parent / 'public'
@@ -59,6 +60,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
     def do_POST(self):
         routes={'/api/simulate':simulate,'/api/league/create':league.create,'/api/league/advance':league.advance,'/api/league/next-season':league.next_season,'/api/lan/invite':lan.invite,'/api/lan/submit':None,'/api/team/save':None}
+        for action in ('import','assign','propose','accept','reject','cancel'):routes['/api/transactions/'+action]=None
         if self.path not in routes: return self.reply(404, {'error': 'Unknown endpoint'})
         try:
             origin=self.headers.get('Origin')
@@ -72,6 +74,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(request,dict): raise ValueError('Request must be an object')
             if self.path=='/api/league/advance' and not getattr(self.server,'lan_mode',False):
                 request['override_ready']=True
+            if self.path.startswith('/api/transactions/'):
+                who=lan.identity(self.token()) if getattr(self.server,'lan_mode',False) else {'role':'commissioner'}
+                return self.reply(200,transactions.transact(request,who,self.path.rsplit('/',1)[1]))
             if self.path=='/api/lan/submit':
                 return self.reply(200,lan.submit(request,lan.identity(self.token())))
             if self.path=='/api/team/save':

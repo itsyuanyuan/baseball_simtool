@@ -60,3 +60,24 @@ function careerPotential(history, current, scale, mappings, higherBetter=true) {
   return potential;
 }
 if (typeof module !== 'undefined') module.exports = { normalizeRating, ratingAliases, detectRole, mapSnapshot, unwrapCareer, careerPotential };
+
+function normalizedHistory(history,scale='yakyolife',mappings=null,higherBetter=true){
+  return Object.fromEntries(Object.entries(history).filter(([a,r])=>/^\d+$/.test(a)&&+a>=10&&+a<=100&&r&&typeof r==='object').map(([a,r])=>{
+    const source=r.ratings||r.abilities||r, mapped=mapSnapshot(source,scale,mappings,higherBetter);
+    return [a,Object.fromEntries(Object.entries(mapped).filter(([k])=>{const field=mappings?mappings[k]:ratingAliases[k].find(f=>Number.isFinite(source[f]));return field&&Number.isFinite(source[field]);}))];
+  }));
+}
+function importCareer(value,entryAge=null){
+  const s=unwrapCareer(value),raw=s.pastab||s.history||{[s.age||25]:s.ratings||s};
+  const ages=Object.keys(raw).filter(a=>/^\d+$/.test(a)&&+a>=10&&+a<=100).map(Number).sort((a,b)=>a-b);
+  if(!ages.length)throw Error('No career ages found in pastab.');
+  const age=entryAge===null?ages[0]:Number(entryAge);
+  if(!ages.includes(age))throw Error('Entry age must be one of: '+ages.join(', '));
+  const record=raw[age];
+  if(!record||typeof record!=='object'||Array.isArray(record))throw Error('Each pastab age must contain an ability object.');
+  const source=record.ratings||record.abilities||record;
+  if(!Object.values(ratingAliases).flat().some(k=>Number.isFinite(source[k])))throw Error('No recognized numeric Yakyolife abilities at this age.');
+  const current=mapSnapshot(source,'yakyolife'),role=detectRole(source);
+  return {name:s.name||'Imported player',age,position:role==='pitcher'?'P':role==='catcher'?'C':'DH',...current,history:normalizedHistory(raw),potential:careerPotential(raw,current,'yakyolife')};
+}
+if(typeof module!=='undefined')Object.assign(module.exports,{normalizedHistory,importCareer});
