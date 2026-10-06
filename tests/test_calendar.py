@@ -39,6 +39,7 @@ class CalendarTests(unittest.TestCase):
         self.step()
         self.assertIn('0:'+reserve,self.s['stats']['regular'])
         self.assertNotIn('0:'+original,self.s['stats']['regular'])
+        self.assertEqual(self.s['stats']['regular']['0:'+reserve]['position_games'],{'C':1})
         t=self.s['teams'][0]
         self.assertEqual(t['lineup'][0]['player_id'],original)
         self.assertLess(t['bench'][0]['energy'],100)

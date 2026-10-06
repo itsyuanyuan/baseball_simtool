@@ -19,16 +19,22 @@ function gameButton(g){return `<button class="clickgame" data-game="${g.id}">${e
 function games(){if(!state)return;const f=$('filter').value;const list=state.schedule.filter(g=>f==='all'||(f==='played'?g.score:!g.score));$('games').innerHTML=list.map(g=>`<p class="muted">${esc(g.date||'')} · Day ${g.day} · ${g.score?gameButton(g):esc(state.teams[g.away].name)+' @ '+esc(state.teams[g.home].name)}</p>`).join('')||'<p class="muted">No games in this view.</p>';}
 function leaders(){
   if(!state)return;
-  const phase=$('statsPhase').value,format=(v,n=3)=>v===null||v===undefined?'—':v.toFixed(n),pct=v=>v===null?'—':(v*100).toFixed(1)+'%';
+  const phase=$('statsPhase').value,advanced=$('statsView').value==='advanced',format=(v,n=3)=>v===null||v===undefined?'—':v.toFixed(n),pct=v=>v===null?'—':(v*100).toFixed(1)+'%';
+  const bat=Object.values(state.stats[phase]),pitch=Object.values(state.pitching_stats?.[phase]||{}),context=warContext(bat,pitch);
+  $('warNote').hidden=!advanced;
   if($('statsKind').value==='pitching'){
-    const rows=Object.values(state.pitching_stats?.[phase]||{}).sort((a,b)=>b.SO-a.SO||b.outs-a.outs).map(pitchingRates);
-    $('leaders').innerHTML=table(['Pitcher','Team','G','GS','IP','BF','H','R','HR','BB','HBP','SO','Pitches','RA9','WHIP','K/9','BB/9','K%','BB%','K−BB%','FIP*'],rows.map(p=>[p.name,state.teams[p.team].name,p.G,p.GS,p.IP,p.complete===false?'—':p.BF,p.H,p.R,p.complete===false?'—':p.HR,p.BB,p.complete===false?'—':p.HBP,p.SO,p.pitches,format(p.RA9,2),format(p.WHIP,2),format(p.K9,2),format(p.BB9,2),pct(p.Kpct),pct(p.BBpct),pct(p.KBBpct),format(p.FIP,2)]));
+    const rows=pitch.sort((a,b)=>b.SO-a.SO||b.outs-a.outs).map(p=>pitchingWAR(p,context));
+    $('leaders').innerHTML=advanced?
+      table(['Pitcher','Team','IP','K/9','BB/9','K%','BB%','K−BB%','FIP*','WAR*'],rows.map(p=>[p.name,state.teams[p.team].name,p.IP,format(p.K9,2),format(p.BB9,2),pct(p.Kpct),pct(p.BBpct),pct(p.KBBpct),format(p.FIP,2),format(p.WAR,2)])):
+      table(['Pitcher','Team','G','GS','IP','BF','H','R','HR','BB','HBP','SO','Pitches','RA9','WHIP'],rows.map(p=>[p.name,state.teams[p.team].name,p.G,p.GS,p.IP,p.complete===false?'—':p.BF,p.H,p.R,p.complete===false?'—':p.HR,p.BB,p.complete===false?'—':p.HBP,p.SO,p.pitches,format(p.RA9,2),format(p.WHIP,2)]));
   }else{
-    const rows=Object.values(state.stats[phase]).sort((a,b)=>b.HR-a.HR||b.H-a.H).map(battingRates);
-    $('leaders').innerHTML=table(['Player','Team','G','PA','AB','R','H','2B','3B','HR','BB','SO','RBI','SB','CS','AVG','OBP','SLG','OPS','ISO','BABIP','K%','BB%'],rows.map(p=>[p.name,state.teams[p.team].name,p.G,p.PA,p.AB,p.R??'—',p.H,p.D??'—',p.T??'—',p.HR,p.BB,p.SO,p.RBI,p.SB||0,p.CS||0,format(p.AVG),format(p.OBP),format(p.SLG),format(p.OPS),format(p.ISO),format(p.BABIP),pct(p.Kpct),pct(p.BBpct)]));
+    const rows=bat.sort((a,b)=>b.HR-a.HR||b.H-a.H).map(p=>battingWAR(p,context));
+    $('leaders').innerHTML=advanced?
+      table(['Player','Team','PA','OPS','ISO','BABIP','K%','BB%','wOBA*','Bat RAA*','SB Runs*','Pos Runs*','Rep Runs*','WAR*'],rows.map(p=>[p.name,state.teams[p.team].name,p.PA,format(p.OPS),format(p.ISO),format(p.BABIP),pct(p.Kpct),pct(p.BBpct),format(p.wOBA),format(p.BatRuns,2),format(p.RunRuns,2),format(p.PosRuns,2),format(p.RepRuns,2),format(p.WAR,2)])):
+      table(['Player','Team','G','PA','AB','R','H','2B','3B','HR','RBI','BB','HBP','SF','SO','SB','CS','AVG','OBP','SLG'],rows.map(p=>[p.name,state.teams[p.team].name,p.G,p.PA,p.AB,p.R??'—',p.H,p.D??'—',p.T??'—',p.HR,p.RBI,p.BB,p.HBP,p.SF,p.SO,p.SB||0,p.CS||0,format(p.AVG),format(p.OBP),format(p.SLG)]));
   }
 }
-$('statsKind').onchange=leaders;
+$('statsKind').onchange=$('statsView').onchange=leaders;
 $('filter').onchange=games;$('statsPhase').onchange=leaders;
 async function act(action,finish=false){if(busy||!state)return;busy=true;stopping=false;controls();try{do{const next=await api('/api/league/advance',{id:state.id,version:state.version,action,override_ready:$('overrideReady').checked});adopt(next);toast(`Saved · ${state.schedule.filter(g=>g.score).length} regular-season games complete.`);await new Promise(r=>setTimeout(r,0));}while(finish&&!stopping&&state.phase==='regular');await saved();if(state.phase==='ready')toast('Regular season complete. Start playoffs when ready.');if(state.phase==='complete')toast('Champion crowned. Your league is saved.');}catch(e){toast(e.message+' Reopen the saved league before retrying if the connection failed.');}finally{busy=false;controls();}}
 $('next').onclick=()=>act('next');$('day').onclick=()=>act('day');$('finish').onclick=()=>act('batch',true);$('playoffs').onclick=()=>act('playoffs');$('stop').onclick=()=>{stopping=true;toast('Stopping after the current saved batch.');};

@@ -155,6 +155,8 @@ def play(conn,state,g):
             key=f"{team_id}:{selected[side]['lineup'][slot]['player_id']}"
             totals=state['stats'][g['phase']].setdefault(key,dict(team=team_id,name=p['name'],player_id=selected[side]['lineup'][slot]['player_id'],G=0,AB=0,H=0,HR=0,BB=0,HBP=0,SF=0,SO=0,RBI=0,SB=0,CS=0))
             totals['G']+=1
+            position=selected[side]['lineup'][slot]['position']
+            totals.setdefault('position_games',{})[position]=totals.get('position_games',{}).get(position,0)+1
             for stat in ('AB','H','HR','BB','HBP','SF','SO','RBI'): totals[stat]+=p[stat]
             for stat in ('SB','CS'): totals[stat]=totals.get(stat,0)+p.get(stat,0)
             for stat in ('D','T','R'):
