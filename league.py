@@ -10,6 +10,7 @@ from development import develop
 from datetime import date
 import rosters
 import season_stats
+from run_values import COMPONENTS, COUNTERS
 from engine import simulate, validate_team, MODEL_VERSION
 
 DB = Path(__file__).parent / 'data' / 'leagues.sqlite3'
@@ -101,13 +102,19 @@ def create(request):
                  stats={'regular':{},'playoffs':{}},start_date=start_date,calendar_day=0,roster_version=1)
     rosters.prepare(state)
     state['pitching_stats']={'regular':{},'playoffs':{}}
-    for t in teams:
+    for team_index,t in enumerate(teams):
         for group in rosters.GROUPS:
-            for p in t[group]:
+            for slot,p in enumerate(t[group]):
                 if p.get('history') and not p.get('is_ghost'):
                     p['career_id']=hashlib.sha256(json.dumps({'name':p['name'],'history':p['history']},sort_keys=True).encode()).hexdigest()[:24]
                     if p['career_id'] in state.get('library',{}):raise ValueError('A career can occupy only one league roster slot. Remove the duplicate player.')
                     state.setdefault('library',{})[p['career_id']]=deepcopy(p)
+                    raw=request['teams'][team_index].get(group,[])
+                    source=raw[slot].get('source_career') if slot<len(raw) else None
+                    if source is not None:
+                        if not isinstance(source,dict):raise ValueError('Original career must be an object')
+                        json.dumps(source,allow_nan=False)
+                        state['library'][p['career_id']]['source_career']=deepcopy(source)
     with connect() as conn: save(conn,state)
     return view(state)
 
@@ -161,6 +168,8 @@ def play(conn,state,g):
             for stat in ('SB','CS'): totals[stat]=totals.get(stat,0)+p.get(stat,0)
             for stat in ('D','T','R'):
                 if totals['G']==1 or stat in totals:totals[stat]=totals.get(stat,0)+p.get(stat,0)
+            for stat in (*COMPONENTS,*COUNTERS,'value_games'):
+                totals[stat]=totals.get(stat,0)+p[stat]
     season_stats.add_pitching(state,g,result,selected)
 
 def advance(request):
@@ -172,7 +181,7 @@ def advance(request):
         if request.get('version') != state['version']: raise ValueError('League changed in another tab. Reload it before continuing.')
         rosters.prepare(state);ensure_player_ids(state);season_stats.migrate(conn,state)
         if state['model_version']!=MODEL_VERSION:
-            if state['model_version'] not in ('0.2-calibrated','0.3-speed-development','0.4-calendar-fatigue'): raise ValueError('This league uses an unsupported engine version.')
+            if state['model_version'] not in ('0.2-calibrated','0.3-speed-development','0.4-calendar-fatigue','0.5-careers-trades'): raise ValueError('This league uses an unsupported engine version.')
             state.setdefault('model_history',[]).append(state['model_version'])
             state['model_version']=MODEL_VERSION
         action=request.get('action','next')
@@ -259,7 +268,7 @@ def next_season(request):
                     p.setdefault('player_id',uuid.uuid4().hex)
                     report=develop(p,f"{s['seed']}:development:{year+1}:{p['player_id']}",season_stats.player_totals(s,p),season_stats.player_totals(s,p,'pitching'))
                     p['energy']=100
-                    reports.append({'team':team_id,**report})
+                    reports.append({'team':team_id,'player_id':p['player_id'],**report})
         for p in s.get('released',{}).values():
             develop(p,f"{s['seed']}:development:{year+1}:{p['player_id']}",season_stats.player_totals(s,p),season_stats.player_totals(s,p,'pitching'));p['energy']=100
         s['development_report']=reports

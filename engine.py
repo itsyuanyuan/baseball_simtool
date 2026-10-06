@@ -1,9 +1,10 @@
 """Original, seeded baseball model. Ratings are 0–100; velocity is a rating, not mph."""
 import random
+from run_values import RunValueLedger, probability
 
 RATINGS = ('stamina', 'contact', 'power', 'eye', 'velocity', 'movement', 'control', 'range', 'error', 'arm', 'sequencing')
 POSITIONS = ('C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH')
-MODEL_VERSION = '0.5-careers-trades'
+MODEL_VERSION = '0.6-running-defense-values'
 # Neutral, 50-rated baseline. Slopes retain individual player differences.
 MODEL = dict(zone=.507, swing_zone=.68, chase=.30, contact=.85, foul=.48,
              homer=.044, hit=.300, double=23.5, triple=1.8,
@@ -31,6 +32,7 @@ def player(value):
     if not 0<=out['speed']<=100: raise ValueError('speed must be between 0 and 100')
     out['energy']=float(value.get('energy',100))
     if 'is_ghost' in value:out['is_ghost']=value['is_ghost'] is True
+    if out.get('is_ghost') and value.get('ghost_curve')==1:out['ghost_curve']=1
     if not 0<=out['energy']<=100: raise ValueError('energy must be between 0 and 100')
     for key in ('player_id','career_id'):
         if key in value:out[key]=str(value[key])[:100]
@@ -98,6 +100,7 @@ def simulate(request, *, max_innings=12):
             for p,row in zip(t[group],stats[side]):
                 if 'player_id' in p:row['player_id']=p['player_id']
     innings, log = [[], []], []
+    values=RunValueLedger(teams,batting)
     def chance(p):
         return rng.random() < max(.005, min(.995, p))
     for inning in range(1, max_innings + 1):
@@ -107,6 +110,7 @@ def simulate(request, *, max_innings=12):
             defense = 1 - side
             outs, bases, runs, pa_count = 0, [None, None, None], 0, 0
             while outs < 3:
+                values.play_index=len(log)
                 pa_count += 1
                 if pa_count > 250:
                     raise ValueError('Simulation exceeded the half-inning safety limit; try another seed')
@@ -125,11 +129,15 @@ def simulate(request, *, max_innings=12):
                     stealing=bases[0];bases[0]=None
                     success=running_rng.random()<max(.15,min(.95,.76+(stealing['speed']-50)*.0035-(catcher['arm']-50)*.003))
                     batting[side][stealing['slot']]['SB' if success else 'CS']+=1
+                    neutral_success=max(.15,min(.95,.76+(stealing['speed']-50)*.0035))
+                    values.record(defense,teams[defense]['lineup'].index(catcher),'catcher_throw_runs','steal_control',not success,1-neutral_success,.60,
+                                  steal_attempts_against=1,caught_stealing_against=int(not success))
                     if success: bases[1]=stealing
                     else: outs+=1;ps['outs']+=1
                     log.append({'inning':inning,'half':'Top' if side==0 else 'Bottom','batter':stealing['name'],'pitcher':pitcher['name'],'outcome':'Stolen base' if success else 'Caught stealing','runs':0,'outs':outs,'bases':[p['name'] if p else None for p in bases],'score':score[:],'pitches':[],'plate_appearance':False})
                     if outs==3: break
                 bi = order[side] % 9
+                values.play_index=len(log)
                 order[side] += 1
                 batter = teams[side]['lineup'][bi]
                 bs = batting[side][bi]
@@ -222,6 +230,12 @@ def simulate(request, *, max_innings=12):
                         defensive_skill = fielder['range']
                         infield_speed=(batter['speed']-50)*.0006 if fielder['position'] in ('1B','2B','3B','SS') else 0
                         hit = not error and chance(MODEL['hit'] + (batter['contact'] - 50) * .0015 - (defensive_skill - 50) * .002+infield_speed)
+                        fi=teams[defense]['lineup'].index(fielder)
+                        neutral_error=probability(MODEL['error'])
+                        neutral_hit=probability(MODEL['hit']+(batter['contact']-50)*.0015+infield_speed)
+                        neutral_out=(1-neutral_error)*(1-neutral_hit)
+                        values.record(defense,fi,'fielding_runs','ball_in_play',not(error or hit),neutral_out,.75,
+                                      fielding_chances=1,fielding_outs=int(not(error or hit)),fielding_errors=int(error))
                         if error or hit:
                             triples=max(.2,MODEL['triple']+(batter['speed']-50)*.025)
                             distance = 1 if error else rng.choices([1, 2, 3], [100-MODEL['double']-triples, MODEL['double'] * park, triples])[0]
@@ -238,9 +252,20 @@ def simulate(request, *, max_innings=12):
                                 if bases[index]:
                                     target = index + distance
                                     arm = (fielder['arm'] - 50) * .004-(bases[index]['speed']-50)*.006
-                                    if not error and distance == 1 and index == 1 and chance(MODEL['score_second'] - arm): target = 3
-                                    if not error and distance == 1 and index == 0 and advanced[2] is None and chance(MODEL['first_to_third'] - arm): target = 2
-                                    if not error and distance == 2 and index == 0 and chance(MODEL['score_first_double'] - arm): target = 3
+                                    def extra_base(base_chance,weight,kind):
+                                        taken=chance(base_chance-arm)
+                                        # A walk-off may have ended before this runner is processed.
+                                        if not (inning>=9 and side==1 and score[1]>score[0]):
+                                            neutral_runner=probability(base_chance-(fielder['arm']-50)*.004)
+                                            neutral_fielder=probability(base_chance+(bases[index]['speed']-50)*.006)
+                                            values.record(side,bases[index]['slot'],'advance_runs',kind,taken,neutral_runner,weight,
+                                                          advance_chances=1,extra_bases=int(taken))
+                                            values.record(defense,fi,'arm_runs',kind,not taken,1-neutral_fielder,weight,
+                                                          arm_chances=1,advances_allowed=int(taken))
+                                        return taken
+                                    if not error and distance == 1 and index == 1 and extra_base(MODEL['score_second'],.40,'second_to_home_single'): target = 3
+                                    if not error and distance == 1 and index == 0 and advanced[2] is None and extra_base(MODEL['first_to_third'],.20,'first_to_third_single'): target = 2
+                                    if not error and distance == 2 and index == 0 and extra_base(MODEL['score_first_double'],.40,'first_to_home_double'): target = 3
                                     if target >= 3: run(bases[index])
                                     else: advanced[target] = bases[index]
                             advanced[distance - 1] = runner
@@ -248,12 +273,27 @@ def simulate(request, *, max_innings=12):
                         else:
                             outcome = 'Field out'
                             outs += 1
-                            if bases[0] and start_outs < 2 and chance(MODEL['double_play'] + (fielder['arm'] + defensive_skill - 100) * .001-(batter['speed']-50)*.0015):
+                            double_play=False
+                            if bases[0] and start_outs < 2:
+                                double_play=chance(MODEL['double_play'] + (fielder['arm'] + defensive_skill - 100) * .001-(batter['speed']-50)*.0015)
+                                neutral_runner=probability(MODEL['double_play']+(fielder['arm']+defensive_skill-100)*.001)
+                                neutral_fielder=probability(MODEL['double_play']-(batter['speed']-50)*.0015)
+                                values.record(side,bi,'avoid_dp_runs','double_play',not double_play,1-neutral_runner,.45,
+                                              dp_chances=1,double_plays_hit_into=int(double_play))
+                                values.record(defense,fi,'fielding_runs','double_play',double_play,neutral_fielder,.45,
+                                              dp_field_chances=1,double_plays_turned=int(double_play))
+                            if double_play:
                                 outcome = 'Double play'
                                 outs += 1
                                 bases[0] = None
-                            elif start_outs < 2 and chance(MODEL['productive_out'] - (fielder['arm']-50)*.002):
-                                if bases[2]:
+                            elif start_outs < 2:
+                                productive=chance(MODEL['productive_out'] - (fielder['arm']-50)*.002)
+                                if bases[2] or bases[1]:
+                                    values.record(defense,fi,'arm_runs','productive_out',not productive,1-probability(MODEL['productive_out']),.40 if bases[2] else .20,
+                                                  arm_chances=1,advances_allowed=int(productive))
+                                if not productive:
+                                    pass
+                                elif bases[2]:
                                     outcome = 'Sacrifice fly'
                                     bs['AB'] -= 1
                                     bs['SF'] += 1
@@ -267,4 +307,4 @@ def simulate(request, *, max_innings=12):
                 if inning >= 9 and side == 1 and score[1] > score[0]: break
             innings[side].append(runs)
         if inning >= 9 and score[0] != score[1]: break
-    return {'model_version': MODEL_VERSION, 'seed': seed, 'teams': [t['name'] for t in teams], 'score': score, 'hits': hits, 'errors': errors, 'innings': innings, 'batting': batting, 'pitching': pitching, 'log': log, 'tie': score[0] == score[1]}
+    return {'model_version': MODEL_VERSION, 'seed': seed, 'teams': [t['name'] for t in teams], 'score': score, 'hits': hits, 'errors': errors, 'innings': innings, 'batting': batting, 'pitching': pitching, 'log': log, 'value_events':values.events, 'tie': score[0] == score[1]}

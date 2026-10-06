@@ -28,9 +28,13 @@ function battingWAR(p,context){
   const rates=battingRates(p),woba=weightedOnBase(p),starts=p.position_games||{},known=Object.values(starts).reduce((a,b)=>a+b,0)===p.G&&Object.keys(starts).every(k=>k in positionRuns);
   const bat=woba!==null&&context.woba!==null?(woba-context.woba)/1.20*rates.PA:null;
   const run=context.stealRate!==null?.2*(p.SB||0)-.4*(p.CS||0)-context.stealRate*rates.PA:null;
+  const tracked=p.value_games===p.G&&['advance_runs','avoid_dp_runs','fielding_runs','arm_runs','catcher_throw_runs'].every(k=>Number.isFinite(p[k]));
+  const advance=tracked?p.advance_runs:null,dp=tracked?p.avoid_dp_runs:null;
+  const defense=tracked?p.fielding_runs+p.arm_runs+p.catcher_throw_runs:null;
+  const baserunning=tracked&&run!==null?run+advance+dp:null;
   const pos=known?Object.entries(starts).reduce((n,[k,g])=>n+positionRuns[k]*g/162,0):null;
   const replacement=20*rates.PA/600;
-  return {...rates,wOBA:woba,BatRuns:bat,RunRuns:run,PosRuns:pos,RepRuns:replacement,WAR:bat!==null&&run!==null&&pos!==null?(bat+run+pos+replacement)/10:null};
+  return {...rates,wOBA:woba,BatRuns:bat,RunRuns:run,AdvanceRuns:advance,AvoidDPRuns:dp,BaserunningRuns:baserunning,FieldRuns:defense,PosRuns:pos,RepRuns:replacement,WAR:bat!==null&&baserunning!==null&&defense!==null&&pos!==null?(bat+baserunning+defense+pos+replacement)/10:null};
 }
 function pitchingWAR(p,context){
   const rates=pitchingRates(p),ip=p.outs/3;

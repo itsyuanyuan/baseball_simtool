@@ -68,6 +68,8 @@ class LeagueTests(unittest.TestCase):
 
     def test_next_season_archives_and_preserves_league(self):
         s=self.create(2,1)
+        s['teams'][0]['lineup'][0]['is_ghost']=False
+        s['teams'][0]['lineup'][0].pop('history',None)
         s['teams'][0]['lineup'][0]['age']=19
         s['teams'][0]['lineup'][0]['contact']=30
         s['teams'][0]['lineup'][0]['potential']={'contact':90}

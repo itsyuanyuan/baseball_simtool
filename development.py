@@ -27,6 +27,12 @@ def performance(stats,pitching=False):
 def develop(p,seed,batting=None,pitching=None):
     rng=random.Random(seed);old_age=p['age'];p['age']=min(100,old_age+1)
     before={k:float(p.get(k,50)) for k in (*RATINGS,'speed')}
+    if p.get('is_ghost') and p.get('ghost_curve')==1 and p['age']<=31:
+        from ghosts import ratings
+        p.update(ratings(p['age']))
+        changes={k:round(p[k]-v,2) for k,v in before.items()}
+        components={k:{'source':'ghost age curve','base':v*(-1 if k=='error' else 1),'performance':0,'random':0} for k,v in changes.items()}
+        return {'name':p['name'],'age_before':old_age,'age_after':p['age'],'changes':changes,'components':components}
     p.setdefault('potential',dict(before));history=p.get('history',{})
     changes={};components={}
     for key,current in before.items():

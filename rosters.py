@@ -2,6 +2,8 @@
 from copy import deepcopy
 from datetime import date,timedelta
 from engine import demo_team,player,validate_team
+import ghosts
+import re
 
 GROUPS=('lineup','bench','pitchers')
 
@@ -23,7 +25,9 @@ def full_team(team,index=0):
     t.setdefault('rotation_size',5)
     t.setdefault('auto_rest',True)
     for group in GROUPS:
-        for p in t[group]:p.setdefault('energy',100)
+        for p in t[group]:
+            p.setdefault('energy',100)
+            if p.get('is_ghost') and not p.get('career_id') and not p.get('ghost_curve') and not p.get('history'):ghosts.initialize(p)
     return t
 
 def validate_full(team):
@@ -59,7 +63,11 @@ def prepare(s):
         s['calendar_date']=day_date(s,max(1,s['calendar_day']))
     for t in s['teams']:
         for group in GROUPS:
-            for p in t[group]:p.setdefault('is_ghost',not bool(p.get('history') or p.get('career_id')))
+            for p in t[group]:
+                if not s.get('ghost_curve_version') and not p.get('career_id') and not p.get('history') and re.fullmatch(r'.+ (?:\d{2}|Reserve [1-4]|Pitcher \d+)',p['name']) and p.get('is_ghost',True):
+                    ghosts.initialize(p)
+                p.setdefault('is_ghost',not bool(p.get('history') or p.get('career_id')))
+    s['ghost_curve_version']=1
 
 def day_date(s,day):
     return (date.fromisoformat(s['start_date'])+timedelta(days=day-1)).isoformat()

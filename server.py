@@ -11,6 +11,7 @@ import rosters
 import league
 import lan
 import transactions
+import player_history
 from urllib.parse import urlparse, parse_qs
 
 PUBLIC = Path(__file__).parent / 'public'
@@ -48,6 +49,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply(200,{'addresses':addresses,'port':self.server.server_port})
             if url.path == '/api/leagues': return self.reply(200, league.list_leagues())
             if url.path == '/api/league': return self.reply(200, league.get(params['id'][0]))
+            if url.path == '/api/players': return self.reply(200, player_history.directory(params['id'][0]))
+            if url.path == '/api/player': return self.reply(200, player_history.profile(params['id'][0],params['player'][0]))
             if url.path == '/api/league/archive': return self.reply(200, league.archive(params['id'][0],params['season'][0]))
             if url.path == '/api/league/game': return self.reply(200, league.game(params['id'][0],params['game'][0]))
             if url.path == '/api/league/demo': return self.reply(200, [rosters.full_team(demo_team(name,i+10),i) for i,name in enumerate(('Harbor','Forest','Summit','Comets','Tigers','Falcons','Wolves','Stars','Bears','Foxes','Sharks','Storm','Owls','Kings','Rockets','Dragons'))])

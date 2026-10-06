@@ -35,7 +35,13 @@ def transact(request,who,action):
             fingerprint={'name':p['name'],'history':p.get('history')} if p.get('history') else {k:v for k,v in p.items() if k not in ('energy','player_id','career_id')}
             career=hashlib.sha256(json.dumps(fingerprint,sort_keys=True).encode()).hexdigest()[:24]
             p.pop('player_id',None);p['career_id']=career;p['energy']=100;p['is_ghost']=False
-            s.setdefault('library',{}).setdefault(career,p)
+            source=request['player'].get('source_career')
+            if source is not None:
+                if not isinstance(source,dict):raise ValueError('Original career must be an object')
+                if len(json.dumps(source,allow_nan=False).encode())>800000:raise ValueError('Original career is too large')
+                p['source_career']=deepcopy(source)
+            stored=s.setdefault('library',{}).setdefault(career,p)
+            if source is not None:stored['source_career']=p['source_career']
         elif action=='assign':
             if s['phase']=='complete':raise ValueError('Start the next season before changing a completed roster.')
             group=request['group'];slot=request['slot']
@@ -45,12 +51,14 @@ def transact(request,who,action):
             if any(q.get('career_id')==career for t in s['teams'] for g in rosters.GROUPS for q in t[g]):raise ValueError('This career is already on a team. Use a trade to acquire it.')
             released=s.setdefault('released',{})
             p=released.pop(career,p)
+            p.pop('source_career',None) # Keep the raw source once, in the shared library.
             old=s['teams'][team][group][slot]
             if s['phase']!='regular' and old.get('career_id'):raise ValueError('During the postseason you can fill ghost slots; replacing an existing career waits until the next regular season.')
             if old.get('career_id'):released[old['career_id']]=old
+            s.setdefault('departed_players',{})[old['player_id']]=deepcopy(old)
             p.setdefault('player_id',uuid.uuid4().hex);p['position']=old['position']
             s['teams'][team][group][slot]=p
-            s.setdefault('transactions',[]).append(dict(type='replacement',team=team,out=old['name'],incoming=p['name'],day=s['calendar_day']))
+            s.setdefault('transactions',[]).append(dict(type='replacement',team=team,out=old['name'],out_id=old['player_id'],incoming=p['name'],incoming_id=p['player_id'],season=s.get('season',1),day=s['calendar_day']))
             invalidate(s,[team])
         elif action=='propose':
             if s['phase']!='regular':raise ValueError('Trades are open during the regular season only.')

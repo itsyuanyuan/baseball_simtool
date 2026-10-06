@@ -4,6 +4,16 @@ const { normalizeRating } = require('../public/ratings.js');
 const { mapSnapshot, detectRole } = require('../public/ratings.js');
 const {unwrapCareer,careerPotential}=require('../public/ratings.js');
 
+test('Whole original career survives import independently of starting age',()=>{
+  const {importCareer}=require('../public/ratings.js');
+  const S={name:'Career',pastab:{16:{con:20,spd:20},26:{con:70,spd:60},38:{con:40,spd:30}},trait:'Patient','career stat':{H:1000}};
+  const p=importCareer({S,Seed:123},26);
+  assert.equal(p.age,26);
+  assert.deepEqual(Object.keys(p.history),['16','26','38']);
+  assert.deepEqual(p.source_career,S);
+  S.trait='Changed';assert.equal(p.source_career.trait,'Patient');
+});
+
 test('S envelope ignores Seed; potential takes per-ability peaks including speed and inverted errors',()=>{
   const s=unwrapCareer({Seed:'ignored',S:{name:'A',pastab:{16:{con:30,spd:40,fld:25},24:{con:80,spd:70,fld:75},36:{con:60,spd:30,fld:65}}}});
   const current=mapSnapshot(s.pastab[16],'yakyolife');

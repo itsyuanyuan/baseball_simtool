@@ -78,6 +78,6 @@ function importCareer(value,entryAge=null){
   const source=record.ratings||record.abilities||record;
   if(!Object.values(ratingAliases).flat().some(k=>Number.isFinite(source[k])))throw Error('No recognized numeric Yakyolife abilities at this age.');
   const current=mapSnapshot(source,'yakyolife'),role=detectRole(source);
-  return {name:s.name||'Imported player',age,position:role==='pitcher'?'P':role==='catcher'?'C':'DH',...current,history:normalizedHistory(raw),potential:careerPotential(raw,current,'yakyolife')};
+  return {source_career:JSON.parse(JSON.stringify(s)),name:s.name||'Imported player',age,position:role==='pitcher'?'P':role==='catcher'?'C':'DH',...current,history:normalizedHistory(raw),potential:careerPotential(raw,current,'yakyolife')};
 }
 if(typeof module!=='undefined')Object.assign(module.exports,{normalizedHistory,importCareer});

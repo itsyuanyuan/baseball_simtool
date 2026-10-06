@@ -40,6 +40,10 @@ class CalendarTests(unittest.TestCase):
         self.assertIn('0:'+reserve,self.s['stats']['regular'])
         self.assertNotIn('0:'+original,self.s['stats']['regular'])
         self.assertEqual(self.s['stats']['regular']['0:'+reserve]['position_games'],{'C':1})
+        row=self.s['stats']['regular']['0:'+reserve]
+        self.assertEqual(row['value_games'],1)
+        self.assertIn('catcher_throw_runs',row)
+        self.assertEqual(league.get(self.s['id'])['stats']['regular']['0:'+reserve],row)
         t=self.s['teams'][0]
         self.assertEqual(t['lineup'][0]['player_id'],original)
         self.assertLess(t['bench'][0]['energy'],100)

@@ -9,7 +9,7 @@ def add_pitching(s,g,result,selected=None):
             if selected:identity=selected[side]['pitchers'][index]['player_id']
             if not identity:
                 matches=[q for q in s['teams'][team]['pitchers'] if q['name']==p['name']]
-                identity=matches[0]['player_id'] if len(matches)==1 else 'legacy:'+p['name']
+                identity=matches[0].get('player_id','legacy:'+p['name']) if len(matches)==1 else 'legacy:'+p['name']
             p=dict(p)
             if 'BF' not in p:
                 names=[q['name'] for q in result['pitching'][side]]
