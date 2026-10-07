@@ -30,11 +30,15 @@ class EngineTests(unittest.TestCase):
         totals = []
         for contact in (10, 90):
             strikeouts = 0
+            appearances = 0
             for seed in range(60):
                 req = self.request(seed)
                 for p in req['away']['lineup']: p['contact'] = contact
-                strikeouts += sum(p['SO'] for p in simulate(req)['batting'][0])
-            totals.append(strikeouts)
+                bat = simulate(req)['batting'][0]
+                strikeouts += sum(p['SO'] for p in bat)
+                appearances += sum(p['AB']+p['BB']+p['HBP']+p['SF'] for p in bat)
+            # High-contact teams extend innings: compare rates, not raw totals.
+            totals.append(strikeouts/appearances)
         self.assertGreater(totals[0], totals[1] * 1.5)
 
     def test_hbp_sacrifice_and_walkoff_accounting(self):

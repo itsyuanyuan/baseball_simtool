@@ -17,26 +17,55 @@ function controls(){ $('nextSeason').hidden=!canControl||state?.phase!=='complet
 function render(){const s=state;$('history').innerHTML='<p>Season '+(s.season||1)+' · '+esc(s.calendar_date||'')+' · Day '+(s.calendar_day||0)+'</p><p class="muted">Advance day includes rest days. Next game skips to the next scheduled game, applying recovery for elapsed days.</p>'+(s.past_seasons||[]).map(y=>`<p><a target="_blank" href="/api/league/archive?id=${s.id}&season=${y.season}">Season ${y.season} archive</a> · Champion: ${esc(y.champion)}</p>`).join('');controls();$('phase').textContent=s.phase==='ready'?'REGULAR SEASON COMPLETE':s.phase.toUpperCase();$('leagueTitle').textContent=s.name;const done=s.schedule.filter(g=>g.score).length;$('progress').innerHTML=s.champion!==null?`<p class="champion">🏆 ${esc(s.teams[s.champion].name)} are champions.</p>`:`<p>${done} / ${s.schedule.length} regular-season games completed · ${esc(s.model_version)}</p>`;$('standings').innerHTML=table(['#','Team','GP','W','L','PCT','GB','RF','RA','DIFF'],s.standings.map((r,i)=>[i+1,r.name,r.GP,r.W,r.L,r.PCT.toFixed(3),i?((s.standings[0].W-r.W+r.L-s.standings[0].L)/2).toFixed(1):'—',r.RF,r.RA,r.DIFF]));$('bracket').innerHTML=s.rounds.length?s.rounds.map(r=>`<h3>Round ${r.number}${r.series.length===1?' · Championship':''}</h3>`+r.series.map(x=>`<div class="series"><p>#${x.high+1} ${esc(s.teams[s.seeds[x.high]].name)} <strong>${x.wins[0]}</strong></p><p>#${x.low+1} ${esc(s.teams[s.seeds[x.low]].name)} <strong>${x.wins[1]}</strong></p><p class="muted">Best of ${s.best_of} · ${x.winner===null?'In progress':esc(s.teams[s.seeds[x.winner]].name)+' advances'}</p>${x.games.map(gameButton).join(' ')}</div>`).join('')).join(''):'<p class="muted">The top '+s.playoff_teams+' teams qualify after the regular season.</p>';games();leaders();}
 function gameButton(g){return `<button class="clickgame" data-game="${g.id}">${esc(state.teams[g.away].name)} ${g.score.join('–')} ${esc(state.teams[g.home].name)}</button>`;}
 function games(){if(!state)return;const f=$('filter').value;const list=state.schedule.filter(g=>f==='all'||(f==='played'?g.score:!g.score));$('games').innerHTML=list.map(g=>`<p class="muted">${esc(g.date||'')} · Day ${g.day} · ${g.score?gameButton(g):esc(state.teams[g.away].name)+' @ '+esc(state.teams[g.home].name)}</p>`).join('')||'<p class="muted">No games in this view.</p>';}
+let statSort={key:null,ascending:false};
+function statFilter(p){
+  const pitching=$('statsKind').value==='pitching',position=$('statsPosition').value;
+  const workload=pitching?p.outs/3:battingRates(p).PA;
+  return p.name.toLowerCase().includes($('statsSearch').value.trim().toLowerCase())&&
+    ($('statsTeam').value==='all'||String(p.team)===$('statsTeam').value)&&
+    (position==='all'||(pitching?position==='P':(p.position_games?.[position]||0)>0))&&
+    workload>=Math.max(0,Number($('statsMinimum').value)||0);
+}
+function statsTable(columns,rows){
+  let index=columns.indexOf(statSort.key);
+  if(index<0){statSort={key:columns.includes('HR')?'HR':columns.includes('SO')?'SO':columns[0],ascending:false};index=columns.indexOf(statSort.key);}
+  const number=v=>v==='—'||v===null||v===undefined?null:parseFloat(String(v));
+  rows.sort((a,b)=>{
+    if(index<2)return String(a[index]).localeCompare(String(b[index]))*(statSort.ascending?1:-1);
+    const x=number(a[index]),y=number(b[index]);
+    if(x===null||Number.isNaN(x))return y===null||Number.isNaN(y)?0:1;
+    if(y===null||Number.isNaN(y))return -1;
+    return (x-y)*(statSort.ascending?1:-1);
+  });
+  $('statsCount').textContent=rows.length+' player stints shown · Minimum applies to PA for batters/fielders and innings pitched for pitchers.';
+  return '<table><thead><tr>'+columns.map(c=>`<th aria-sort="${c===statSort.key?(statSort.ascending?'ascending':'descending'):'none'}"><button class="quiet" data-stat-sort="${esc(c)}">${esc(c)}${c===statSort.key?(statSort.ascending?' ↑':' ↓'):''}</button></th>`).join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+}
+$('leaders').onclick=e=>{const button=e.target.closest('[data-stat-sort]');if(!button)return;const key=button.dataset.statSort;statSort={key,ascending:key===statSort.key?!statSort.ascending:['Player','Pitcher','Team'].includes(key)};leaders();};
+for(const id of ['statsSearch','statsTeam','statsPosition','statsMinimum'])$(id).oninput=leaders;
+$('statsReset').onclick=()=>{$('statsSearch').value='';$('statsTeam').value=$('statsPosition').value='all';$('statsMinimum').value=0;leaders();};
 function leaders(){
   if(!state)return;
   const phase=$('statsPhase').value,advanced=$('statsView').value==='advanced',format=(v,n=3)=>v===null||v===undefined?'—':v.toFixed(n),pct=v=>v===null?'—':(v*100).toFixed(1)+'%';
   const bat=Object.values(state.stats[phase]),pitch=Object.values(state.pitching_stats?.[phase]||{}),context=warContext(bat,pitch);
+  const team=$('statsTeam').value;
+  $('statsTeam').innerHTML='<option value="all">All teams</option>'+state.teams.map((t,i)=>`<option value="${i}">${esc(t.name)}</option>`).join('');
+  $('statsTeam').value=[...$('statsTeam').options].some(o=>o.value===team)?team:'all';
   $('warNote').hidden=!advanced;
   if($('statsKind').value==='pitching'){
-    const rows=pitch.sort((a,b)=>b.SO-a.SO||b.outs-a.outs).map(p=>pitchingWAR(p,context));
+    const rows=pitch.filter(statFilter).sort((a,b)=>b.SO-a.SO||b.outs-a.outs).map(p=>pitchingWAR(p,context));
     $('leaders').innerHTML=advanced?
-      table(['Pitcher','Team','IP','K/9','BB/9','K%','BB%','K−BB%','FIP*','WAR*'],rows.map(p=>[p.name,state.teams[p.team].name,p.IP,format(p.K9,2),format(p.BB9,2),pct(p.Kpct),pct(p.BBpct),pct(p.KBBpct),format(p.FIP,2),format(p.WAR,2)])):
-      table(['Pitcher','Team','G','GS','IP','BF','H','R','HR','BB','HBP','SO','Pitches','RA9','WHIP'],rows.map(p=>[p.name,state.teams[p.team].name,p.G,p.GS,p.IP,p.complete===false?'—':p.BF,p.H,p.R,p.complete===false?'—':p.HR,p.BB,p.complete===false?'—':p.HBP,p.SO,p.pitches,format(p.RA9,2),format(p.WHIP,2)]));
+      statsTable(['Pitcher','Team','IP','K/9','BB/9','K%','BB%','K−BB%','FIP*','WAR*'],rows.map(p=>[p.name,state.teams[p.team].name,p.IP,format(p.K9,2),format(p.BB9,2),pct(p.Kpct),pct(p.BBpct),pct(p.KBBpct),format(p.FIP,2),format(p.WAR,2)])):
+      statsTable(['Pitcher','Team','G','GS','IP','BF','H','R','HR','BB','HBP','SO','Pitches','RA9','WHIP'],rows.map(p=>[p.name,state.teams[p.team].name,p.G,p.GS,p.IP,p.complete===false?'—':p.BF,p.H,p.R,p.complete===false?'—':p.HR,p.BB,p.complete===false?'—':p.HBP,p.SO,p.pitches,format(p.RA9,2),format(p.WHIP,2)]));
   }else if($('statsKind').value==='fielding'){
-    const rows=bat.map(p=>battingWAR(p,context)),count=(p,k)=>p.value_games?p[k]??'—':'—';
+    const rows=bat.filter(statFilter).map(p=>battingWAR(p,context)),count=(p,k)=>p.value_games?p[k]??'—':'—';
     $('leaders').innerHTML=advanced?
-      table(['Player','Team','Tracked G','SB Runs*','Advance Runs*','DP Avoidance*','BsR*','Plays/DP Runs*','Arm Runs*','C Throw Runs*','Def Runs*','WAR*'],rows.map(p=>[p.name,state.teams[p.team].name,`${p.value_games||0}/${p.G}`,format(p.RunRuns,2),format(p.AdvanceRuns,2),format(p.AvoidDPRuns,2),format(p.BaserunningRuns,2),format(p.value_games===p.G?p.fielding_runs:null,2),format(p.value_games===p.G?p.arm_runs:null,2),format(p.value_games===p.G?p.catcher_throw_runs:null,2),format(p.FieldRuns,2),format(p.WAR,2)])):
-      table(['Player','Team','Tracked G','Chances','Outs made','Errors','DP chances','DP turned','Arm chances','Advances allowed','SB attempts against','CS against','Extra-base chances','Extra bases taken','GIDP chances','GIDP'],rows.map(p=>[p.name,state.teams[p.team].name,`${p.value_games||0}/${p.G}`,...['fielding_chances','fielding_outs','fielding_errors','dp_field_chances','double_plays_turned','arm_chances','advances_allowed','steal_attempts_against','caught_stealing_against','advance_chances','extra_bases','dp_chances','double_plays_hit_into'].map(k=>count(p,k))]));
+      statsTable(['Player','Team','Tracked G','SB Runs*','Advance Runs*','DP Avoidance*','BsR*','Plays/DP Runs*','Arm Runs*','C Throw Runs*','Def Runs*','WAR*'],rows.map(p=>[p.name,state.teams[p.team].name,`${p.value_games||0}/${p.G}`,format(p.RunRuns,2),format(p.AdvanceRuns,2),format(p.AvoidDPRuns,2),format(p.BaserunningRuns,2),format(p.value_games===p.G?p.fielding_runs:null,2),format(p.value_games===p.G?p.arm_runs:null,2),format(p.value_games===p.G?p.catcher_throw_runs:null,2),format(p.FieldRuns,2),format(p.WAR,2)])):
+      statsTable(['Player','Team','Tracked G','Chances','Outs made','Errors','DP chances','DP turned','Arm chances','Advances allowed','SB attempts against','CS against','Extra-base chances','Extra bases taken','GIDP chances','GIDP'],rows.map(p=>[p.name,state.teams[p.team].name,`${p.value_games||0}/${p.G}`,...['fielding_chances','fielding_outs','fielding_errors','dp_field_chances','double_plays_turned','arm_chances','advances_allowed','steal_attempts_against','caught_stealing_against','advance_chances','extra_bases','dp_chances','double_plays_hit_into'].map(k=>count(p,k))]));
   }else{
-    const rows=bat.sort((a,b)=>b.HR-a.HR||b.H-a.H).map(p=>battingWAR(p,context));
+    const rows=bat.filter(statFilter).sort((a,b)=>b.HR-a.HR||b.H-a.H).map(p=>battingWAR(p,context));
     $('leaders').innerHTML=advanced?
-      table(['Player','Team','PA','OPS','ISO','BABIP','K%','BB%','wOBA*','Bat RAA*','BsR*','Def Runs*','Pos Runs*','Rep Runs*','WAR*'],rows.map(p=>[p.name,state.teams[p.team].name,p.PA,format(p.OPS),format(p.ISO),format(p.BABIP),pct(p.Kpct),pct(p.BBpct),format(p.wOBA),format(p.BatRuns,2),format(p.BaserunningRuns,2),format(p.FieldRuns,2),format(p.PosRuns,2),format(p.RepRuns,2),format(p.WAR,2)])):
-      table(['Player','Team','G','PA','AB','R','H','2B','3B','HR','RBI','BB','HBP','SF','SO','SB','CS','AVG','OBP','SLG'],rows.map(p=>[p.name,state.teams[p.team].name,p.G,p.PA,p.AB,p.R??'—',p.H,p.D??'—',p.T??'—',p.HR,p.RBI,p.BB,p.HBP,p.SF,p.SO,p.SB||0,p.CS||0,format(p.AVG),format(p.OBP),format(p.SLG)]));
+      statsTable(['Player','Team','PA','OPS','ISO','BABIP','K%','BB%','wOBA*','Bat RAA*','BsR*','Def Runs*','Pos Runs*','Rep Runs*','WAR*'],rows.map(p=>[p.name,state.teams[p.team].name,p.PA,format(p.OPS),format(p.ISO),format(p.BABIP),pct(p.Kpct),pct(p.BBpct),format(p.wOBA),format(p.BatRuns,2),format(p.BaserunningRuns,2),format(p.FieldRuns,2),format(p.PosRuns,2),format(p.RepRuns,2),format(p.WAR,2)])):
+      statsTable(['Player','Team','G','PA','AB','R','H','2B','3B','HR','RBI','BB','HBP','SF','SO','SB','CS','AVG','OBP','SLG'],rows.map(p=>[p.name,state.teams[p.team].name,p.G,p.PA,p.AB,p.R??'—',p.H,p.D??'—',p.T??'—',p.HR,p.RBI,p.BB,p.HBP,p.SF,p.SO,p.SB||0,p.CS||0,format(p.AVG),format(p.OBP),format(p.SLG)]));
   }
 }
 $('statsKind').onchange=$('statsView').onchange=leaders;

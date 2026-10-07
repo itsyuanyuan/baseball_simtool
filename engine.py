@@ -4,12 +4,18 @@ from run_values import RunValueLedger, probability
 
 RATINGS = ('stamina', 'contact', 'power', 'eye', 'velocity', 'movement', 'control', 'range', 'error', 'arm', 'sequencing')
 POSITIONS = ('C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH')
-MODEL_VERSION = '0.6-running-defense-values'
+MODEL_VERSION = '0.7-catcher-running-decisions'
 # Neutral, 50-rated baseline. Slopes retain individual player differences.
 MODEL = dict(zone=.507, swing_zone=.68, chase=.30, contact=.85, foul=.48,
              homer=.044, hit=.300, double=23.5, triple=1.8,
              hbp=.0028, error=.018, score_second=.67, first_to_third=.28,
              score_first_double=.55, productive_out=.36, double_play=.13)
+
+def steal_attempt_probability(speed, catcher_arm):
+    # Speed governs willingness as well as success; avoid unfavorable matchups.
+    success=max(.15,min(.95,.76+(speed-50)*.0035-(catcher_arm-50)*.003))
+    willingness=min(.35,.12*(max(0,min(100,speed))/50)**2)
+    return willingness*max(0,min(1,(success-.50)/.26))
 
 def player(value):
     if not isinstance(value, dict):
@@ -125,7 +131,7 @@ def simulate(request, *, max_innings=12):
                 catcher = next(p for p in teams[defense]['lineup'] if p['position'] == 'C')
                 # Imported cat belongs to the catcher. A neutral 50 adds no modifier.
                 sequencing = max(0, min(100, pitcher['sequencing'] + catcher['sequencing'] - 50))
-                if bases[0] and not bases[1] and running_rng.random()<max(.01,min(.35,.12+(bases[0]['speed']-50)*.003)):
+                if bases[0] and not bases[1] and running_rng.random()<steal_attempt_probability(bases[0]['speed'],catcher['arm']):
                     stealing=bases[0];bases[0]=None
                     success=running_rng.random()<max(.15,min(.95,.76+(stealing['speed']-50)*.0035-(catcher['arm']-50)*.003))
                     batting[side][stealing['slot']]['SB' if success else 'CS']+=1
@@ -227,7 +233,7 @@ def simulate(request, *, max_innings=12):
                     else:
                         fielder = rng.choice([p for p in teams[defense]['lineup'] if p['position'] != 'DH'])
                         error = chance(MODEL['error'] + (fielder['error'] - 50) * .0003)
-                        defensive_skill = fielder['range']
+                        defensive_skill = 50 if fielder['position']=='C' else fielder['range']
                         infield_speed=(batter['speed']-50)*.0006 if fielder['position'] in ('1B','2B','3B','SS') else 0
                         hit = not error and chance(MODEL['hit'] + (batter['contact'] - 50) * .0015 - (defensive_skill - 50) * .002+infield_speed)
                         fi=teams[defense]['lineup'].index(fielder)

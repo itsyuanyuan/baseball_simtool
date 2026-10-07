@@ -6,12 +6,24 @@ from checks import team
 from run_values import COMPONENTS,COUNTERS
 
 class RunValueTests(unittest.TestCase):
-    def test_accounting_preserves_previous_game_outcomes(self):
-        results=[]
-        for i in range(20):
-            r=simulate(dict(away=demo_team('A'),home=demo_team('B',2),seed=f'value-accounting-{i}'))
-            results.append({k:r[k] for k in ('score','innings','log','hits','errors','pitching')})
-        self.assertEqual(hashlib.sha256(json.dumps(results,sort_keys=True).encode()).hexdigest(),'83a3fc1531fdfa42d336478241da600bfb00c3fc77efeddc27b4e5fbfeac029e')
+    def test_catcher_range_has_no_effect(self):
+        for seed in range(20):
+            a,b=demo_team('A'),demo_team('B',2)
+            for t in (a,b):t['lineup'][0]['range']=0
+            low=simulate(dict(away=a,home=b,seed=seed))
+            for t in (a,b):t['lineup'][0]['range']=100
+            high=simulate(dict(away=a,home=b,seed=seed))
+            for key in ('score','log','batting','value_events'):
+                self.assertEqual(low[key],high[key])
+
+    def test_slow_runners_rarely_attempt_steals(self):
+        from engine import steal_attempt_probability as attempt
+        self.assertEqual(attempt(0,50),0)
+        self.assertLess(attempt(10,50),.005)
+        self.assertLess(attempt(25,50),attempt(50,50)/4)
+        self.assertAlmostEqual(attempt(50,50),.12)
+        self.assertGreater(attempt(80,50),attempt(50,50))
+        self.assertLess(attempt(25,90),attempt(25,20))
 
     def test_event_ledger_reconciles_and_outs_errors_steals_match(self):
         for seed in range(60):

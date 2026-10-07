@@ -181,7 +181,7 @@ def advance(request):
         if request.get('version') != state['version']: raise ValueError('League changed in another tab. Reload it before continuing.')
         rosters.prepare(state);ensure_player_ids(state);season_stats.migrate(conn,state)
         if state['model_version']!=MODEL_VERSION:
-            if state['model_version'] not in ('0.2-calibrated','0.3-speed-development','0.4-calendar-fatigue','0.5-careers-trades'): raise ValueError('This league uses an unsupported engine version.')
+            if state['model_version'] not in ('0.2-calibrated','0.3-speed-development','0.4-calendar-fatigue','0.5-careers-trades','0.6-running-defense-values'): raise ValueError('This league uses an unsupported engine version.')
             state.setdefault('model_history',[]).append(state['model_version'])
             state['model_version']=MODEL_VERSION
         action=request.get('action','next')
