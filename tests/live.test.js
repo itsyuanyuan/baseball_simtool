@@ -99,3 +99,19 @@ test('Pitches share a release and arrival but slider and changeup break opposite
   assert.ok(pitchTrajectory(change,.7).x<pitchTrajectory(fast,.7).x);
   assert.ok(pitchTrajectory(change,.7).y<pitchTrajectory(slider,.7).y);
 });
+test('Control reduces target error and balls across identical random draws',()=>{
+  const {locatePitch,random}=require('../public/live-model.js');
+  let errors=[],balls=[];
+  for(const control of [0,100]){
+    const rng=random(123);let error=0,outside=0;
+    for(let i=0;i<3000;i++){const p=locatePitch(control,rng);error+=(p.x-p.target.x)**2+(p.y-p.target.y)**2;if(p.x<0||p.x>1||p.y<0||p.y>1)outside++;}
+    errors.push(error);balls.push(outside);
+  }
+  assert.ok(errors[0]>errors[1]*10);assert.ok(balls[0]>balls[1]+500);
+});
+test('Break rating changes late pitch location while preserving commanded arrival',()=>{
+  const {pitchTrajectory}=require('../public/live-model.js');
+  const low={type:'Slider',x:.5,y:.5,movement:0},high={...low,movement:100};
+  assert.ok(Math.abs(pitchTrajectory(high,.85).x-pitchTrajectory(low,.85).x)>40);
+  assert.deepEqual(pitchTrajectory(high,1),pitchTrajectory(low,1));
+});

@@ -1,4 +1,4 @@
-const $=id=>document.getElementById(id),{FieldPlay,contact,BASES,random,clamp,pitchTrajectory}=LiveBaseball;
+const $=id=>document.getElementById(id),{FieldPlay,contact,BASES,random,clamp,pitchTrajectory,locatePitch}=LiveBaseball;
 const field=$('field'),fc=field.getContext('2d'),zone=$('zone'),zc=zone.getContext('2d');
 let rng=random(Date.now()),inning=1,outs=0,runs=0,balls=0,strikes=0,bases=[],play=null,pitch=null,phase='ready',aim={x:.5,y:.5},last=0,atbat=1,seed=1,hits=0,walks=0,strikeouts=0,seen=0,defenders=[];
 let batter={name:'Practice batter',contact:50,power:50,speed:50,eye:50},pitcher={name:'Practice pitcher',velocity:50,movement:50,control:50,sequencing:50},leaguePlayers=[];
@@ -7,18 +7,18 @@ function say(text){$('call').textContent=text;}
 function log(text){const li=document.createElement('li');li.textContent='Inning '+inning+' · '+text;$('plays').prepend(li);}
 function score(){ $('score').textContent=`Inning ${Math.min(inning,3)} · ${runs} runs · ${outs} outs`;$('count').textContent=`${balls} balls · ${strikes} strikes`;$('totals').textContent=`${hits} hits · ${walks} walks · ${strikeouts} strikeouts · ${seen} pitches`;
   $('pitch').disabled=phase!=='ready';$('take').disabled=$('swing').disabled=phase!=='pitch';$('advance').disabled=$('hold').disabled=phase!=='field';$('steal').disabled=phase!=='ready'||!bases.some(r=>r.base===1)||bases.some(r=>r.base===2);$('restart').disabled=phase==='field'||phase==='pitch';
-  for(const id of ['league','batter','pitcher','contact','power','speed','velocity'])$(id).disabled=phase==='field'||phase==='pitch';
+  for(const id of ['league','batter','pitcher','contact','power','speed','velocity','movement','control'])$(id).disabled=phase==='field'||phase==='pitch';
 }
 function nextBatter(){balls=0;strikes=0;atbat++;if(outs>=3){inning++;outs=0;bases=[];log('Side retired');}phase=inning>3?'finished':'ready';say(phase==='finished'?`Practice complete — ${runs} runs. Restart to play again.`:'Ready · '+batter.name+' at bat');score();}
 function freeBase(){walks++;let forced=true;for(let b=1;b<=3;b++){const r=bases.find(r=>r.base===b);if(!r){forced=false;break;}if(forced){if(b===3){runs++;bases=bases.filter(q=>q!==r);}else r.newBase=b+1;}}for(const r of bases){if(r.newBase){r.base=r.newBase;delete r.newBase;}}bases.push({name:batter.name+' #'+atbat,base:1,speed:batter.speed});log('Walk');nextBatter();}
 function strike(foul=false){if(!foul||strikes<2)strikes++;if(strikes>=3){outs++;strikeouts++;log('Strikeout');nextBatter();}else{phase='ready';say(foul?'Foul ball':'Strike');score();}}
 function deliver(){if(phase!=='ready')return;const types=['Fastball','Slider','Changeup'],type=types[Math.floor(rng()*types.length)];
-  const inZone=rng()<(.5+(pitcher.control-50)*.002),x=inZone?.2+rng()*.6:(rng()<.5?-.05-rng()*.1:1.05+rng()*.1),y=.12+rng()*.76;
+  const {x,y}=locatePitch(pitcher.control,rng);
   const duration=1.65-pitcher.velocity*.006+(type==='Slider'?.20:type==='Changeup'?.45:0);
   pitch={x,y,type,duration,windup:.65,elapsed:0,movement:pitcher.movement,taken:false};phase='pitch';seen++;$('pitchName').textContent=type;say('Watch the pitch. Aim, then swing.');score();zone.focus();
 }
 function take(){if(phase==='pitch'){pitch.taken=true;say('Taking this pitch…');}}
-function swing(){if(phase!=='pitch'||pitch.taken)return;const timing=pitch.elapsed-pitch.windup-pitch.duration,result=contact({aim,pitch,timing,contact:batter.contact,power:batter.power,rng});
+function swing(){if(phase!=='pitch'||pitch.taken)return;const timing=pitch.elapsed-pitch.windup-pitch.duration,position=pitchTrajectory(pitch,(pitch.elapsed-pitch.windup)/pitch.duration),atContact={x:(position.x-145)/190,y:(position.y-65)/220},result=contact({aim,pitch:atContact,timing,contact:batter.contact,power:batter.power,rng});
   $('detail').textContent=`${result.kind==='fair'?Math.round(result.quality*100)+'% contact · '+Math.round(result.angle*180/Math.PI)+'° launch · ':''}${pitch.type} · ${timing<-.08?'Early':timing>.08?'Late':'On time'} · ${Math.round(Math.abs(timing)*1000)} ms from arrival`;
   if(result.kind==='miss'){strike();return;}if(result.kind==='foul'){strike(true);return;}
   play=new FieldPlay({seed:seed++,runners:bases,batter:{name:batter.name+' #'+atbat,speed:batter.speed},defenders,launch:result,outs});phase='field';say('Ball in play — send or hold your runners.');score();
@@ -48,7 +48,7 @@ function drawZone(){zc.clearRect(0,0,480,360);zc.fillStyle='#0c1815';zc.fillRect
   if(phase==='pitch'&&!winding){const t=clamp((pitch.elapsed-pitch.windup)/pitch.duration,0,1),p=pitchTrajectory(pitch,t);
     zc.strokeStyle='#fff6dd55';zc.beginPath();for(let i=0;i<=8;i++){const q=pitchTrajectory(pitch,Math.max(0,t-i*.014));i?zc.lineTo(q.x,q.y):zc.moveTo(q.x,q.y);}zc.stroke();
     zc.strokeStyle='#f5ae69';zc.beginPath();zc.arc(p.x,p.y,p.radius+(1-t)*35,0,Math.PI*2);zc.stroke();zc.fillStyle='#fff6dd';zc.beginPath();zc.arc(p.x,p.y,p.radius,0,Math.PI*2);zc.fill();}
-  if(winding){zc.fillStyle='#d7f783';zc.font='12px sans-serif';zc.textAlign='center';zc.fillText('Pitcher winding up…',240,310);} 
+  if(winding){zc.fillStyle='#d7f783';zc.font='12px sans-serif';zc.textAlign='center';zc.fillText('Pitcher winding up…',240,310);}
   zc.fillStyle='#a6b5ab';zc.font='12px sans-serif';zc.textAlign='center';zc.fillText(phase==='pitch'?'Swing at arrival':phase==='field'?'Ball in play — watch the field':'Press Next pitch to begin',240,330);
 }
 function frame(now){const dt=Math.min(.04,(now-last)/1000||0);last=now;if(phase==='pitch'){pitch.elapsed+=dt;if(pitch.elapsed>pitch.windup+pitch.duration+.32){const inside=pitch.x>=0&&pitch.x<=1&&pitch.y>=0&&pitch.y<=1;if(inside)strike();else{balls++;if(balls===4)freeBase();else{phase='ready';say('Ball');score();}}}}if(phase==='field'){play.update(dt);if(play.homeRun){say('HOME RUN! Runners round the bases.');$('advance').disabled=$('hold').disabled=true;}if(play.done)finishPlay();}drawField();drawZone();requestAnimationFrame(frame);}
@@ -56,14 +56,14 @@ function pointer(e){const rect=zone.getBoundingClientRect();aim={x:clamp(((e.cli
 zone.onpointermove=pointer;zone.onpointerdown=e=>{pointer(e);if(e.pointerType==='mouse')swing();else zone.setPointerCapture(e.pointerId);};
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&!['INPUT','SELECT','BUTTON','SUMMARY'].includes(document.activeElement?.tagName)){e.preventDefault();swing();}});
 $('pitch').onclick=deliver;$('take').onclick=take;$('swing').onclick=swing;$('steal').onclick=steal;$('advance').onclick=()=>play?.send();$('hold').onclick=()=>play?.hold();
-function abilities(){ $('abilities').textContent=`${batter.name}: contact ${Math.round(source(batter.contact))}, power ${Math.round(source(batter.power))}, speed ${Math.round(source(batter.speed))}. ${pitcher.name}: velocity ${Math.round(source(pitcher.velocity))}. Ratings 20–80.`; }
-for(const key of ['contact','power','speed','velocity'])$(key).oninput=()=>{(key==='velocity'?pitcher:batter)[key]=engine($(key).value);abilities();};
+function abilities(){ $('abilities').textContent=`${batter.name}: contact ${Math.round(source(batter.contact))}, power ${Math.round(source(batter.power))}, speed ${Math.round(source(batter.speed))}. ${pitcher.name}: velocity ${Math.round(source(pitcher.velocity))}, break ${Math.round(source(pitcher.movement))}, control ${Math.round(source(pitcher.control))}. Ratings 20–80.`; }
+for(const key of ['contact','power','speed','velocity','movement','control'])$(key).oninput=()=>{(['velocity','movement','control'].includes(key)?pitcher:batter)[key]=engine($(key).value);abilities();};
 function reset(){inning=1;outs=runs=balls=strikes=hits=walks=strikeouts=seen=0;atbat=1;bases=[];play=pitch=null;phase='ready';$('plays').replaceChildren();say('Ready for the first pitch.');score();}
 $('restart').onclick=reset;
-function selectPlayer(kind){const p=leaguePlayers.find(p=>p.player_id===$(kind).value);if(!p)return;if(kind==='batter'){batter={...p};for(const key of ['contact','power','speed'])$(key).value=source(p[key]??50);}else{pitcher={...p};$('velocity').value=source(p.velocity);}abilities();}
+function selectPlayer(kind){const p=leaguePlayers.find(p=>p.player_id===$(kind).value);if(!p)return;if(kind==='batter'){batter={...p};for(const key of ['contact','power','speed'])$(key).value=source(p[key]??50);}else{pitcher={...p};for(const key of ['velocity','movement','control'])$(key).value=source(p[key]??50);}abilities();}
 $('batter').onchange=()=>selectPlayer('batter');$('pitcher').onchange=()=>selectPlayer('pitcher');
 async function json(path){const r=await fetch(path);if(!r.ok)throw Error('Could not load league');return r.json();}
-$('league').onchange=async()=>{try{if(!$('league').value){leaguePlayers=[];defenders=[];batter={name:'Practice batter',contact:50,power:50,speed:50,eye:50};pitcher={name:'Practice pitcher',velocity:50,movement:50,control:50,sequencing:50};$('batter').replaceChildren();$('pitcher').replaceChildren();for(const id of ['contact','power','speed','velocity'])$(id).value=50;abilities();return;}
+$('league').onchange=async()=>{try{if(!$('league').value){leaguePlayers=[];defenders=[];batter={name:'Practice batter',contact:50,power:50,speed:50,eye:50};pitcher={name:'Practice pitcher',velocity:50,movement:50,control:50,sequencing:50};$('batter').replaceChildren();$('pitcher').replaceChildren();for(const id of ['contact','power','speed','velocity','movement','control'])$(id).value=50;abilities();return;}
   const s=await json('/api/league?id='+encodeURIComponent($('league').value));leaguePlayers=s.teams.flatMap(t=>[...t.lineup,...t.bench,...t.pitchers]);for(const kind of ['batter','pitcher']){$(kind).replaceChildren();for(const p of leaguePlayers.filter(p=>kind==='pitcher'?p.position==='P':p.position!=='P')){const option=document.createElement('option');option.value=p.player_id;option.textContent=p.name;$(kind).append(option);}}defenders=s.teams[1]?.lineup||[];selectPlayer('batter');selectPlayer('pitcher');}catch(e){say(e.message);}};
 (async()=>{try{for(const l of await json('/api/leagues')){const o=document.createElement('option');o.value=l.id;o.textContent=l.name;$('league').append(o);}}catch{say('Practice ready. League players will be available when the server is running.');}})();
 abilities();score();requestAnimationFrame(frame);

@@ -136,12 +136,18 @@ function contact({aim,pitch,timing,contact=50,power=50,rng=Math.random}){
 }
 function pitchTrajectory(pitch,t){
   t=clamp(t,0,1);const depth=t*t,release={x:272,y:42},target={x:145+pitch.x*190,y:65+pitch.y*220};
-  const movement=clamp(pitch.movement??50,0,100)/100,late=t*t*(1-t)*6.75;
+  const movement=clamp(pitch.movement??50,0,100)/100,late=t**5*(1-t)*14.93;
   const horizontal=pitch.type==='Slider'?52:pitch.type==='Changeup'?-32:5;
   const drop=pitch.type==='Slider'?24:pitch.type==='Changeup'?45:8;
   return {x:release.x+(target.x-release.x)*depth+horizontal*movement*late,y:release.y+(target.y-release.y)*depth-drop*movement*late,radius:2+6*depth};
 }
-root.LiveBaseball={FieldPlay,contact,BASES,random,clamp,throwPhysics,pitchTrajectory};
+function locatePitch(control,rng=Math.random){
+  const target={x:rng()<.5?.22:.78,y:rng()<.5?.22:.78};
+  const spread=.34-.285*clamp(control,0,100)/100;
+  const gaussian=()=>Math.sqrt(-2*Math.log(Math.max(1e-9,rng())))*Math.cos(2*Math.PI*rng());
+  return {x:target.x+gaussian()*spread,y:target.y+gaussian()*spread,target,spread};
+}
+root.LiveBaseball={FieldPlay,contact,BASES,random,clamp,throwPhysics,pitchTrajectory,locatePitch};
 if(typeof module!=='undefined')module.exports=root.LiveBaseball;
 })(typeof globalThis!=='undefined'?globalThis:this);
 
