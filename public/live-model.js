@@ -125,14 +125,23 @@ class FieldPlay{
   survivors(){return this.runners.filter(r=>r.alive&&!r.scored&&r.progress>=1&&r.progress<4).map(r=>({name:r.name,speed:r.speed,base:Math.floor(r.progress)}));}
 }
 function contact({aim,pitch,timing,contact=50,power=50,rng=Math.random}){
-  const radius=.14+contact*.0015,offset=Math.hypot(aim.x-pitch.x,aim.y-pitch.y),window=.085+contact*.001;
-  if(offset>radius*1.65||Math.abs(timing)>window*1.8)return {kind:'miss'};
-  const quality=clamp(1-offset/(radius*1.65)-Math.abs(timing)/(window*1.8),0,1);
-  if(quality<.2)return {kind:'foul'};
-  const angle=clamp(.25+(aim.y-pitch.y)*2.4+rng()*.35,-.12,1.0);
-  return {kind:'fair',quality,speed:17+power*.14+quality*12,angle,direction:clamp((pitch.x-aim.x)*2+timing*2,-.74,.74)};
+  const radius=.14+contact*.0015,dx=aim.x-pitch.x,dy=aim.y-pitch.y,offset=Math.hypot(dx,dy),window=.085+contact*.001;
+  if(offset>radius*1.35||Math.abs(timing)>window*1.6)return {kind:'miss'};
+  const quality=clamp(1-(offset/radius)**2,0,1)*clamp(1-(timing/window)**2,0,1);
+  const direction=-dx*2.5+timing*3.2;
+  if(quality<.15||Math.abs(direction)>Math.PI/4)return {kind:'foul'};
+  // Aim above the ball tops it; aim below gets under it. Power cannot fix a mishit.
+  const angle=clamp(.30+dy*4+(rng()-.5)*.04,-.18,1.25);
+  return {kind:'fair',quality,speed:12+quality*(24+clamp(power,0,100)*.07),angle,direction};
 }
-root.LiveBaseball={FieldPlay,contact,BASES,random,clamp,throwPhysics};
+function pitchTrajectory(pitch,t){
+  t=clamp(t,0,1);const depth=t*t,release={x:272,y:42},target={x:145+pitch.x*190,y:65+pitch.y*220};
+  const movement=clamp(pitch.movement??50,0,100)/100,late=t*t*(1-t)*6.75;
+  const horizontal=pitch.type==='Slider'?52:pitch.type==='Changeup'?-32:5;
+  const drop=pitch.type==='Slider'?24:pitch.type==='Changeup'?45:8;
+  return {x:release.x+(target.x-release.x)*depth+horizontal*movement*late,y:release.y+(target.y-release.y)*depth-drop*movement*late,radius:2+6*depth};
+}
+root.LiveBaseball={FieldPlay,contact,BASES,random,clamp,throwPhysics,pitchTrajectory};
 if(typeof module!=='undefined')module.exports=root.LiveBaseball;
 })(typeof globalThis!=='undefined'?globalThis:this);
 

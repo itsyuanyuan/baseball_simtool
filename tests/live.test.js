@@ -78,3 +78,24 @@ test('Throws have release time, bounded speed and longer travel for longer dista
   assert.ok(weak.flight>strong.flight);
   assert.ok(throwPhysics(50,90).flight>throwPhysics(50,20).flight*4);
 });
+test('Cursor placement controls launch angle and good contact beats powerful mishits',()=>{
+  const setup={pitch:{x:.5,y:.5},aim:{x:.5,y:.5},timing:0,rng:()=>.5};
+  const centered=contact({...setup,power:0});
+  const above=contact({...setup,aim:{x:.5,y:.4}}),below=contact({...setup,aim:{x:.5,y:.6}});
+  assert.ok(above.angle<centered.angle&&below.angle>centered.angle);
+  assert.ok(contact({...setup,power:100,aim:{x:.68,y:.5}}).speed<centered.speed);
+  assert.ok(contact({...setup,timing:-.05}).direction<0);
+  assert.ok(contact({...setup,timing:.05}).direction>0);
+  assert.equal(contact({...setup,power:100}).angle,centered.angle);
+});
+test('Pitches share a release and arrival but slider and changeup break opposite ways',()=>{
+  const {pitchTrajectory}=require('../public/live-model.js');
+  const fast={type:'Fastball',x:.5,y:.5,movement:80},slider={...fast,type:'Slider'},change={...fast,type:'Changeup'};
+  for(const p of [slider,change]){
+    assert.deepEqual(pitchTrajectory(p,0),pitchTrajectory(fast,0));
+    assert.deepEqual(pitchTrajectory(p,1),pitchTrajectory(fast,1));
+  }
+  assert.ok(pitchTrajectory(slider,.7).x>pitchTrajectory(fast,.7).x);
+  assert.ok(pitchTrajectory(change,.7).x<pitchTrajectory(fast,.7).x);
+  assert.ok(pitchTrajectory(change,.7).y<pitchTrajectory(slider,.7).y);
+});

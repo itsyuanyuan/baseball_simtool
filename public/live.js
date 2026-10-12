@@ -1,4 +1,4 @@
-const $=id=>document.getElementById(id),{FieldPlay,contact,BASES,random,clamp}=LiveBaseball;
+const $=id=>document.getElementById(id),{FieldPlay,contact,BASES,random,clamp,pitchTrajectory}=LiveBaseball;
 const field=$('field'),fc=field.getContext('2d'),zone=$('zone'),zc=zone.getContext('2d');
 let rng=random(Date.now()),inning=1,outs=0,runs=0,balls=0,strikes=0,bases=[],play=null,pitch=null,phase='ready',aim={x:.5,y:.5},last=0,atbat=1,seed=1,hits=0,walks=0,strikeouts=0,seen=0,defenders=[];
 let batter={name:'Practice batter',contact:50,power:50,speed:50,eye:50},pitcher={name:'Practice pitcher',velocity:50,movement:50,control:50,sequencing:50},leaguePlayers=[];
@@ -12,14 +12,14 @@ function score(){ $('score').textContent=`Inning ${Math.min(inning,3)} · ${runs
 function nextBatter(){balls=0;strikes=0;atbat++;if(outs>=3){inning++;outs=0;bases=[];log('Side retired');}phase=inning>3?'finished':'ready';say(phase==='finished'?`Practice complete — ${runs} runs. Restart to play again.`:'Ready · '+batter.name+' at bat');score();}
 function freeBase(){walks++;let forced=true;for(let b=1;b<=3;b++){const r=bases.find(r=>r.base===b);if(!r){forced=false;break;}if(forced){if(b===3){runs++;bases=bases.filter(q=>q!==r);}else r.newBase=b+1;}}for(const r of bases){if(r.newBase){r.base=r.newBase;delete r.newBase;}}bases.push({name:batter.name+' #'+atbat,base:1,speed:batter.speed});log('Walk');nextBatter();}
 function strike(foul=false){if(!foul||strikes<2)strikes++;if(strikes>=3){outs++;strikeouts++;log('Strikeout');nextBatter();}else{phase='ready';say(foul?'Foul ball':'Strike');score();}}
-function deliver(){if(phase!=='ready')return;const types=['Fastball','Slider','Changeup'],type=types[Math.floor(rng()*types.length)],velocity=type==='Fastball'?1:type==='Slider'?.9:.8;
+function deliver(){if(phase!=='ready')return;const types=['Fastball','Slider','Changeup'],type=types[Math.floor(rng()*types.length)];
   const inZone=rng()<(.5+(pitcher.control-50)*.002),x=inZone?.2+rng()*.6:(rng()<.5?-.05-rng()*.1:1.05+rng()*.1),y=.12+rng()*.76;
-  const duration=(1.65-pitcher.velocity*.006)*velocity+(type==='Changeup'?.35:0);
-  pitch={x,y,type,duration,elapsed:0,break:(type==='Slider'?.20:.05)*(pitcher.movement/100),taken:false};phase='pitch';seen++;$('pitchName').textContent=type;say('Watch the pitch. Aim, then swing.');score();zone.focus();
+  const duration=1.65-pitcher.velocity*.006+(type==='Slider'?.20:type==='Changeup'?.45:0);
+  pitch={x,y,type,duration,windup:.65,elapsed:0,movement:pitcher.movement,taken:false};phase='pitch';seen++;$('pitchName').textContent=type;say('Watch the pitch. Aim, then swing.');score();zone.focus();
 }
 function take(){if(phase==='pitch'){pitch.taken=true;say('Taking this pitch…');}}
-function swing(){if(phase!=='pitch'||pitch.taken)return;const timing=pitch.elapsed-pitch.duration,result=contact({aim,pitch,timing,contact:batter.contact,power:batter.power,rng});
-  $('detail').textContent=`${pitch.type} · ${timing<-.08?'Early':timing>.08?'Late':'On time'} · ${Math.round(Math.abs(timing)*1000)} ms from arrival`;
+function swing(){if(phase!=='pitch'||pitch.taken)return;const timing=pitch.elapsed-pitch.windup-pitch.duration,result=contact({aim,pitch,timing,contact:batter.contact,power:batter.power,rng});
+  $('detail').textContent=`${result.kind==='fair'?Math.round(result.quality*100)+'% contact · '+Math.round(result.angle*180/Math.PI)+'° launch · ':''}${pitch.type} · ${timing<-.08?'Early':timing>.08?'Late':'On time'} · ${Math.round(Math.abs(timing)*1000)} ms from arrival`;
   if(result.kind==='miss'){strike();return;}if(result.kind==='foul'){strike(true);return;}
   play=new FieldPlay({seed:seed++,runners:bases,batter:{name:batter.name+' #'+atbat,speed:batter.speed},defenders,launch:result,outs});phase='field';say('Ball in play — send or hold your runners.');score();
 }
@@ -42,10 +42,16 @@ function drawField(){fc.clearRect(0,0,800,640);fc.fillStyle='#112c20';fc.fillRec
 }
 function drawZone(){zc.clearRect(0,0,480,360);zc.fillStyle='#0c1815';zc.fillRect(0,0,480,360);zc.fillStyle='#294037';zc.fillRect(145,65,190,220);zc.strokeStyle='#9ab79c';zc.strokeRect(145,65,190,220);zc.globalAlpha=.35;for(let n=1;n<3;n++){zc.beginPath();zc.moveTo(145+190*n/3,65);zc.lineTo(145+190*n/3,285);zc.moveTo(145,65+220*n/3);zc.lineTo(335,65+220*n/3);zc.stroke();}zc.globalAlpha=1;
   const cx=145+aim.x*190,cy=65+aim.y*220,r=(.14+batter.contact*.0015)*190;zc.strokeStyle='#d7f783';zc.fillStyle='#d7f78318';zc.beginPath();zc.ellipse(cx,cy,r,r*220/190,0,0,Math.PI*2);zc.fill();zc.stroke();zc.fillStyle='#d7f783';zc.fillRect(cx-2,cy-2,4,4);
-  if(phase==='pitch'){const t=clamp(pitch.elapsed/pitch.duration,0,1),x=145+pitch.x*190+Math.sin(t*Math.PI)*pitch.break*190,y=65+pitch.y*220-(1-t)*100;zc.strokeStyle='#f5ae69';zc.beginPath();zc.arc(x,y,7+(1-t)*60,0,Math.PI*2);zc.stroke();zc.fillStyle='#fff6dd';zc.beginPath();zc.arc(x,y,3+4*t,0,Math.PI*2);zc.fill();}
+  const winding=phase==='pitch'&&pitch.elapsed<pitch.windup,w=winding?pitch.elapsed/pitch.windup:1;
+  // Pitcher in the distance: windup, throwing arm and a shared release point.
+  zc.fillStyle='#84c6ff';zc.beginPath();zc.arc(260,19,6,0,Math.PI*2);zc.fill();zc.lineWidth=4;zc.strokeStyle='#84c6ff';zc.beginPath();zc.moveTo(260,26);zc.lineTo(260,42);zc.moveTo(260,31);zc.lineTo(272,42-Math.sin(w*Math.PI)*22);zc.moveTo(260,42);zc.lineTo(252,53);zc.moveTo(260,42);zc.lineTo(267,53);zc.stroke();zc.lineWidth=1;
+  if(phase==='pitch'&&!winding){const t=clamp((pitch.elapsed-pitch.windup)/pitch.duration,0,1),p=pitchTrajectory(pitch,t);
+    zc.strokeStyle='#fff6dd55';zc.beginPath();for(let i=0;i<=8;i++){const q=pitchTrajectory(pitch,Math.max(0,t-i*.014));i?zc.lineTo(q.x,q.y):zc.moveTo(q.x,q.y);}zc.stroke();
+    zc.strokeStyle='#f5ae69';zc.beginPath();zc.arc(p.x,p.y,p.radius+(1-t)*35,0,Math.PI*2);zc.stroke();zc.fillStyle='#fff6dd';zc.beginPath();zc.arc(p.x,p.y,p.radius,0,Math.PI*2);zc.fill();}
+  if(winding){zc.fillStyle='#d7f783';zc.font='12px sans-serif';zc.textAlign='center';zc.fillText('Pitcher winding up…',240,310);} 
   zc.fillStyle='#a6b5ab';zc.font='12px sans-serif';zc.textAlign='center';zc.fillText(phase==='pitch'?'Swing at arrival':phase==='field'?'Ball in play — watch the field':'Press Next pitch to begin',240,330);
 }
-function frame(now){const dt=Math.min(.04,(now-last)/1000||0);last=now;if(phase==='pitch'){pitch.elapsed+=dt;if(pitch.elapsed>pitch.duration+.32){const inside=pitch.x>=0&&pitch.x<=1&&pitch.y>=0&&pitch.y<=1;if(inside)strike();else{balls++;if(balls===4)freeBase();else{phase='ready';say('Ball');score();}}}}if(phase==='field'){play.update(dt);if(play.homeRun){say('HOME RUN! Runners round the bases.');$('advance').disabled=$('hold').disabled=true;}if(play.done)finishPlay();}drawField();drawZone();requestAnimationFrame(frame);}
+function frame(now){const dt=Math.min(.04,(now-last)/1000||0);last=now;if(phase==='pitch'){pitch.elapsed+=dt;if(pitch.elapsed>pitch.windup+pitch.duration+.32){const inside=pitch.x>=0&&pitch.x<=1&&pitch.y>=0&&pitch.y<=1;if(inside)strike();else{balls++;if(balls===4)freeBase();else{phase='ready';say('Ball');score();}}}}if(phase==='field'){play.update(dt);if(play.homeRun){say('HOME RUN! Runners round the bases.');$('advance').disabled=$('hold').disabled=true;}if(play.done)finishPlay();}drawField();drawZone();requestAnimationFrame(frame);}
 function pointer(e){const rect=zone.getBoundingClientRect();aim={x:clamp(((e.clientX-rect.left)*480/rect.width-145)/190,-.3,1.3),y:clamp(((e.clientY-rect.top)*360/rect.height-65)/220,-.3,1.3)};}
 zone.onpointermove=pointer;zone.onpointerdown=e=>{pointer(e);if(e.pointerType==='mouse')swing();else zone.setPointerCapture(e.pointerId);};
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&!['INPUT','SELECT','BUTTON','SUMMARY'].includes(document.activeElement?.tagName)){e.preventDefault();swing();}});
