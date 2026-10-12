@@ -34,3 +34,24 @@ test('Hold preserves forced advancement and send requests another base',()=>{
   assert.equal(p.runners.find(r=>r.base===3).target,3);
   assert.ok(p.runners.find(r=>r.base===0).target>=1);
 });
+test('Outfield hits move outfielders and return to a covering infielder without a cheap force',()=>{
+  const p=new FieldPlay({seed:10,runners:[{base:1,speed:50}],launch:{speed:35,angle:.32,direction:-.4},defenders:[{position:'LF',error:0}]});
+  assert.ok(['LF','CF','RF'].includes(p.chaser.position));
+  const before=p.fielders.filter(f=>['LF','CF','RF'].includes(f.position)).map(f=>({x:f.x,y:f.y}));
+  for(let i=0;i<30;i++)p.update(.04);
+  const after=p.fielders.filter(f=>['LF','CF','RF'].includes(f.position)).map(f=>({x:f.x,y:f.y}));
+  assert.ok(after.every((f,i)=>Math.hypot(f.x-before[i].x,f.y-before[i].y)>1));
+  finish(p);assert.equal(p.outs,0);
+  assert.ok(p.events.some(e=>e.includes('covering second')));
+  assert.ok(p.events.some(e=>e.includes('receives the throw')));
+  assert.deepEqual(p.survivors().map(r=>r.base).sort(),[1,2]);
+});
+test('Infield throws require a receiver at the bag',()=>{
+  const p=new FieldPlay({seed:4,launch:{speed:23,angle:.05,direction:.4},defenders:[{position:'P',error:0}]});
+  let checked=false;
+  for(let i=0;i<1000&&!p.done;i++){
+    p.update(.04);
+    if(p.throw){checked=true;assert.ok(p.throw.receiver);assert.notEqual(p.throw.receiver,p.chaser);}
+  }
+  assert.ok(checked);assert.ok(p.events.some(e=>e.includes('receives the throw')));
+});
