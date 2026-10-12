@@ -55,3 +55,26 @@ test('Infield throws require a receiver at the bag',()=>{
   }
   assert.ok(checked);assert.ok(p.events.some(e=>e.includes('receives the throw')));
 });
+test('Home runs stop the defense and let runners finish their circuit',()=>{
+  const p=new FieldPlay({launch:{speed:45,angle:.7,direction:0}});
+  for(let i=0;i<300&&p.state!=='homer';i++)p.update(.04);
+  assert.equal(p.state,'homer');assert.equal(p.done,false);
+  const positions=p.fielders.map(f=>[f.x,f.y]);
+  finish(p);assert.deepEqual(p.fielders.map(f=>[f.x,f.y]),positions);
+  assert.equal(p.runs,1);assert.equal(p.throw,null);
+  assert.ok(!p.events.some(e=>e.includes('throws')||e.includes('fields it')));
+});
+test('Ground balls rebound from the fence instead of being retrieved outside it',()=>{
+  const p=new FieldPlay({launch:{speed:100,angle:0,direction:0}});
+  p.state='ground';p.landed=true;p.ball={x:0,y:99,z:0};p.v={x:0,y:40,z:0};
+  p.update(.04);assert.ok(Math.hypot(p.ball.x,p.ball.y)<100);assert.ok(p.v.y<0);
+  assert.ok(p.events.includes('Ball rebounds off the wall'));
+});
+test('Throws have release time, bounded speed and longer travel for longer distances',()=>{
+  const {throwPhysics}=require('../public/live-model.js');
+  const weak=throwPhysics(0,60),strong=throwPhysics(100,60);
+  assert.equal(weak.speed,22);assert.equal(strong.speed,32);
+  assert.ok(weak.transfer>=.35&&strong.transfer>=.35);
+  assert.ok(weak.flight>strong.flight);
+  assert.ok(throwPhysics(50,90).flight>throwPhysics(50,20).flight*4);
+});

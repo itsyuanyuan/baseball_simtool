@@ -3,6 +3,8 @@
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const BASES=[{x:0,y:0},{x:19.4,y:19.4},{x:0,y:38.8},{x:-19.4,y:19.4},{x:0,y:0}];
 const positions=[['C',0,2],['P',0,18],['1B',24,24],['2B',12,37],['SS',-14,37],['3B',-24,24],['LF',-42,63],['CF',0,82],['RF',42,63]];
+function insideFence(p){const d=Math.hypot(p.x,p.y);return d>97?{x:p.x*97/d,y:p.y*97/d}:p;}
+function throwPhysics(arm,length){arm=clamp(arm,0,100);const speed=22+arm*.10;return {speed,transfer:.65-arm*.003,flight:length/speed};}
 function random(seed){let s=seed>>>0;return()=>{s=(1664525*s+1013904223)>>>0;return s/4294967296;};}
 function move(p,target,speed,dt){const d=distance(p,target),step=speed*dt;if(d<=step){p.x=target.x;p.y=target.y;return true;}p.x+=(target.x-p.x)*step/d;p.y+=(target.y-p.y)*step/d;return false;}
 class FieldPlay{
@@ -21,8 +23,8 @@ class FieldPlay{
       this.chaser=this.chooseFielder(this.landing);
     }
   }
-  send(){for(const r of this.runners)if(r.alive&&r.target<4&&!r.scored){r.target=Math.min(4,Math.max(r.target,Math.floor(r.progress)+1));}}
-  hold(){for(const r of this.runners)if(r.alive&&!r.forced)r.target=Math.min(r.target,Math.ceil(r.progress));}
+  send(){if(this.homeRun)return;for(const r of this.runners)if(r.alive&&r.target<4&&!r.scored){r.target=Math.min(4,Math.max(r.target,Math.floor(r.progress)+1));}}
+  hold(){if(this.homeRun)return;for(const r of this.runners)if(r.alive&&!r.forced)r.target=Math.min(r.target,Math.ceil(r.progress));}
   record(text){this.events.push(text);}
   retire(r,text){if(!r?.alive)return;r.alive=false;this.outs++;this.record(text);if(this.startOuts+this.outs>=3){this.done=true;if(r.forced||r.base===0)this.runs=0;this.record('Third out — inning over');}}
   isOutfielder(f){return ['LF','CF','RF'].includes(f.position);}
@@ -48,30 +50,38 @@ class FieldPlay{
         const base=[1,2,3,4].find(b=>this.receiver(b,primary)===f);
         if(base)target=BASES[base];
       }
-      move(f,target,f.position==='C'?6:4.8+f.range*.032,dt);
+      move(f,insideFence(target),f.position==='C'?6:4.8+f.range*.032,dt);
     }
   }
   launchThrow(base,runner=null){const target=BASES[base],f=this.owner,receiver=this.receiver(base,f);if(!receiver){this.done=true;return;}
-    this.throw={from:{x:f.x,y:f.y},to:target,base,receiver,runner,duration:distance(f,target)/(19+f.arm*.18)+.18,elapsed:0};
+    const physics=throwPhysics(f.arm,distance(f,target));
+    this.throw={from:{x:f.x,y:f.y},to:target,base,receiver,runner,...physics,duration:physics.transfer+physics.flight,elapsed:0};
     this.record(f.position+' throws to '+receiver.position+' covering '+['','first','second','third','home'][base]);this.owner=null;this.state='throw';}
   update(dt){
     if(this.done)return;dt=clamp(dt,0,.04);this.time+=dt;
     for(const r of this.runners){
       if(!r.alive||r.scored||r.progress>=r.target)continue;
       // On an airborne ball existing runners wait to avoid being doubled off.
-      if(!this.steal&&this.catchable&&!this.landed&&this.launch.angle>.6&&r.base>0)continue;
+      if(this.state!=='homer'&&!this.steal&&this.catchable&&!this.landed&&this.launch.angle>.6&&r.base>0)continue;
       const next=Math.min(4,Math.floor(r.progress+1e-6)+1),a=BASES[next-1],b=BASES[next];
       const cautious=!this.steal&&this.catchable&&!this.landed&&r.base>0?.6:1;
-      const speed=(4.7+r.speed*.032)*cautious,acceleration=clamp(this.time/1.0,.35,1);
+      const speed=this.state==='homer'?5.5:(4.7+r.speed*.032)*cautious,acceleration=clamp(this.time/1.0,.35,1);
       if(move(r,b,speed*acceleration,dt)){r.progress=next;if(next===4){r.scored=true;this.runs++;this.record((r.name||'Runner')+' scores');}}
       else r.progress=next-1+distance(a,r)/distance(a,b);
     }
+    if(this.state==='homer'){this.homerTime+=dt;if(this.runners.every(r=>r.scored)&&this.homerTime>1.5)this.done=true;return;}
     this.positionDefense(dt);
     if(this.state==='flight'){
       const f=this.chaser,reaction=f.position==='C'?.5:.75-f.range*.005;
-      if(this.time>reaction)move(f,this.landing, f.position==='C'?6:4.8+f.range*.032,dt);
+      if(this.time>reaction)move(f,insideFence(this.landing), f.position==='C'?6:4.8+f.range*.032,dt);
+      const before={...this.ball};
       this.ball.x+=this.v.x*dt;this.ball.y+=this.v.y*dt;this.ball.z+=this.v.z*dt;this.v.z-=9.81*dt;
-      if(Math.hypot(this.ball.x,this.ball.y)>100&&this.ball.z>2.4){this.record('Home run — over the fence');for(const r of this.runners)if(r.alive&&!r.scored){r.scored=true;this.runs++;}this.done=true;return;}
+      if(Math.hypot(this.ball.x,this.ball.y)>=100){
+        const fraction=clamp((100-Math.hypot(before.x,before.y))/(Math.hypot(this.ball.x,this.ball.y)-Math.hypot(before.x,before.y)),0,1);
+        const height=before.z+(this.ball.z-before.z)*fraction;
+        if(height>2.4){this.record('Home run — over the fence');this.state='homer';this.homerTime=0;this.homeRun=true;this.catchable=false;this.landed=true;this.throw=null;for(const r of this.runners)if(r.alive&&!r.scored){r.target=4;r.forced=false;}return;}
+        const p=insideFence(this.ball);this.ball.x=p.x;this.ball.y=p.y;this.v.x*=-.3;this.v.y*=-.3;this.catchable=false;this.record('Ball hits the wall');
+      }
       if(this.catchable&&this.v.z<0&&this.ball.z>0&&this.ball.z<2.4&&distance(f,this.ball)<1.6){
         if(this.rng()<f.error*.0015){this.record(f.position+' drops the catch');this.error=true;this.catchable=false;}
         else{const batter=this.runners.find(r=>r.base===0);this.retire(batter,f.position+' makes the catch');this.landed=true;for(const r of this.runners)if(r.alive&&!r.scored){r.x=BASES[r.base].x;r.y=BASES[r.base].y;r.progress=r.base;r.target=r.base;r.forced=false;}this.done=true;return;}
@@ -79,6 +89,7 @@ class FieldPlay{
       if(this.ball.z<=0){this.ball.z=0;this.landed=true;this.state='ground';this.v.x*=.45;this.v.y*=.45;this.record('Ball lands — runners go');}
     }else if(this.state==='ground'){
       this.ball.x+=this.v.x*dt;this.ball.y+=this.v.y*dt;this.v.x*=Math.exp(-1.5*dt);this.v.y*=Math.exp(-1.5*dt);
+      if(Math.hypot(this.ball.x,this.ball.y)>=100){const p=insideFence(this.ball);this.ball.x=p.x;this.ball.y=p.y;this.v.x*=-.3;this.v.y*=-.3;this.record('Ball rebounds off the wall');}
       if(Math.hypot(this.ball.x,this.ball.y)>48&&!this.isOutfielder(this.chaser))this.chaser=this.chooseFielder(this.ball);
       const f=this.chaser;move(f,this.ball,f.position==='C'?6:4.8+f.range*.032,dt);
       if(distance(f,this.ball)<1.0&&this.time>(this.retry||0)){
@@ -93,7 +104,7 @@ class FieldPlay{
       if(lead)this.launchThrow(lead.base+1,lead);else if(advancing)this.launchThrow(Math.ceil(advancing.progress),advancing);else if(outfield)this.launchThrow(2);else{this.done=true;this.record('Runners safe — play complete');}
     }else if(this.state==='steal'&&this.time>1.9){this.launchThrow(2,this.runners.find(r=>r.base===1));this.record('Catcher throws to second');}
     else if(this.state==='throw'){
-      const t=this.throw;t.elapsed+=dt;const ratio=clamp(t.elapsed/t.duration,0,1);this.ball={x:t.from.x+(t.to.x-t.from.x)*ratio,y:t.from.y+(t.to.y-t.from.y)*ratio,z:1+Math.sin(ratio*Math.PI)*2};
+      const t=this.throw;t.elapsed+=dt;const ratio=clamp((t.elapsed-t.transfer)/t.flight,0,1);this.ball={x:t.from.x+(t.to.x-t.from.x)*ratio,y:t.from.y+(t.to.y-t.from.y)*ratio,z:1+4*(9.81*t.flight*t.flight/8)*ratio*(1-ratio)};
       if(ratio===1&&distance(t.receiver,t.to)<1.2){
         const r=t.runner;this.owner=t.receiver;this.record(t.receiver.position+' receives the throw');
         if(r?.alive&&r.progress<t.base&&(r.forced&&r.base+1===t.base)){
@@ -109,7 +120,7 @@ class FieldPlay{
     }else if(this.state==='settle'&&this.time>this.settleAt){
       if(!this.runners.some(r=>r.alive&&!r.scored&&r.progress<r.target))this.done=true;
     }
-    if(this.time>30){this.done=true;this.record('Play complete');}
+    if(this.time>40){this.done=true;this.record('Play complete');}
   }
   survivors(){return this.runners.filter(r=>r.alive&&!r.scored&&r.progress>=1&&r.progress<4).map(r=>({name:r.name,speed:r.speed,base:Math.floor(r.progress)}));}
 }
@@ -121,7 +132,7 @@ function contact({aim,pitch,timing,contact=50,power=50,rng=Math.random}){
   const angle=clamp(.25+(aim.y-pitch.y)*2.4+rng()*.35,-.12,1.0);
   return {kind:'fair',quality,speed:17+power*.14+quality*12,angle,direction:clamp((pitch.x-aim.x)*2+timing*2,-.74,.74)};
 }
-root.LiveBaseball={FieldPlay,contact,BASES,random,clamp};
+root.LiveBaseball={FieldPlay,contact,BASES,random,clamp,throwPhysics};
 if(typeof module!=='undefined')module.exports=root.LiveBaseball;
 })(typeof globalThis!=='undefined'?globalThis:this);
 
